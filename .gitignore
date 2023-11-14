@@ -1,0 +1,6 @@
+# ignore data sets
+data_stochastic_modelling/
+
+# ignore files build by reporting functionality
+results_stochastic_modelling/
+
