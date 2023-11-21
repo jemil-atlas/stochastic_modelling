@@ -13,7 +13,9 @@ For this, do the following:
     3. Build stochastic model
     4. Inference
     5. Plots and illustrations
-    
+
+The script is meant solely for educational and illustrative purposes. Written by
+Jemil Avers Butt, Atlas optimization GmbH, www.atlasoptimization.com.
 """
 
 
@@ -35,7 +37,7 @@ from scipy.io import loadmat
 # ii) Load data
 
 torch.set_default_dtype(torch.float64)
-data = loadmat('./Data/submatrix_collection_1000pixels_2023_2days_mli_timeseries_no_def.mat')
+data = loadmat('../data_stochastic_modelling/data_bafu_stochastic_model/submatrix_collection_1000pixels_2023_2days_mli_timeseries_no_def.mat')
 data_struct = data['submatrix_collection']
 complex_vals_data = data_struct[0][0][0]
 info_mats_data = data_struct[0][0][1]
@@ -52,7 +54,7 @@ info_mats_data = info_mats_data[index_set[0]:index_set[1],:,:].reshape([-1,n_day
 # Subsample a portion of data (-> toy data for experimentation)
 n_start = 0
 n_end = n_day
-n_skip = 2
+n_skip = 5
 n_step = np.floor((n_end - n_start)/n_skip).astype(int)
 subsample_indices = np.linspace(n_start, n_end-1, n_step).astype(int) 
 # n_cutoff = 100
@@ -326,12 +328,12 @@ simulation_pretrain, full_data_pretrain = copy.copy(tri_stochastics.model(base_d
 # i) Set up training
 
 # specifying scalar options
-learning_rate = 1*1e-2
-num_epochs = 100
+learning_rate = 1*1e-3
+num_epochs = 5000
 adam_args = {"lr" : learning_rate}
 
 # Setting up svi
-optimizer = pyro.optim.AdamW(adam_args)
+optimizer = pyro.optim.NAdam(adam_args)
 elbo_loss = pyro.infer.Trace_ELBO()
 svi = pyro.infer.SVI(model = tri_stochastics.model, guide = tri_stochastics.guide, optim = optimizer, loss= elbo_loss)
 
@@ -354,6 +356,13 @@ for epoch in range(num_epochs):
 # tensorboard --logdir=Tensorboard
 # go to http://localhost:6006/
 writer.close()
+
+# save:
+# torch.save(tri_stochastics.state_dict(), '../results_stochastic_modelling/results_bafu_stochastic_model/ts_model.pth')
+# load
+# tri_stochastics.load_state_dict(torch.load('../results_stochastic_modelling/results_bafu_stochastic_model/ts_model.pth'))
+# tri_stochastics.eval()  # Set the model to evaluation mode
+
 
 # iii) Simulation posttraining
 
@@ -425,11 +434,33 @@ ax.set_ylabel('Coherence')
 ax.set_xlabel('Time')
 ax.set_title('Noise variance')
 
+# Set x-ticks
+x_ticks = np.arange(0, 101, 100/24*4)  # Steps of 4 units, mapped to pixel indices
+x_labels = np.arange(0, 25, 4)  # Labels from 0 to 24 in steps of 4
+ax.set_xticks(x_ticks)
+ax.set_xticklabels(x_labels)
+# Set y-ticks
+y_ticks = np.arange(0, 101, 20)  # Steps of 0.2 units, mapped to pixel indices
+y_labels = np.round(np.arange(0, 1.1, 0.2), 2)  # Labels from 0 to 1 in steps of 0.2
+ax.set_yticks(y_ticks)
+ax.set_yticklabels(y_labels)
+
 ax = axs[0,1]
 ax.imshow(smooth_var)
 ax.set_ylabel('Coherence')
 ax.set_xlabel('Time')
 ax.set_title('Smooth variance')
+
+# Set x-ticks
+x_ticks = np.arange(0, 101, 100/24*4)  # Steps of 4 units, mapped to pixel indices
+x_labels = np.arange(0, 25, 4)  # Labels from 0 to 24 in steps of 4
+ax.set_xticks(x_ticks)
+ax.set_xticklabels(x_labels)
+# Set y-ticks
+y_ticks = np.arange(0, 101, 20)  # Steps of 0.2 units, mapped to pixel indices
+y_labels = np.round(np.arange(0, 1.1, 0.2), 2)  # Labels from 0 to 1 in steps of 0.2
+ax.set_yticks(y_ticks)
+ax.set_yticklabels(y_labels)
 
 # Lineplots over time
 ax = axs[1,0]

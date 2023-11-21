@@ -227,21 +227,16 @@ class TRIStochastics(pyro.nn.PyroModule):
     def model(self, base_data, observations = None):
         # integrate different base_data
         self.integrate_base_data(self.list_inputs,base_data)       
-        # print("Samples:{}".format(self.n_samples))
         # register the map_to_l2 parameters with pyro
         pyro.module("map_to_l2", self.map_to_l2)        
-        # TODO This is where the error comes from cov mat has wront dims, when called leading to wrong obs dist shapes
-        # cov_mats = covariance_function(self.map_to_l2, self.base_data_mats) 
-        # cov_regularizer = 1e-2*(torch.eye(n_total).repeat(self.n_samples, 1, 1))
         
         with pyro.plate('batch_plate',size = self.n_samples, dim = -1, subsample_size = subsample_size) as ind:
             cov_mats = covariance_function(self.map_to_l2, self.base_data_mats[ind,:,:,:]) 
             cov_regularizer = 1e-3*(torch.eye(n_total).repeat(subsample_size, 1, 1))
             subsampled_observations = observations[ind] if observations is not None else None
             obs_dist = pyro.distributions.MultivariateNormal(loc = torch.zeros([subsample_size, n_total]), covariance_matrix = cov_mats + cov_regularizer)
-            # print("batch_shape : {}, event_shape : {}".format(obs_dist.batch_shape, obs_dist.event_shape))
             obs = pyro.sample("obs", obs_dist, obs = subsampled_observations)
-        # data = FullData(base_data, obs.reshape([self.n_samples, n_x,n_y]).detach(), K_phase_mats = cov_mats)
+            
         data = FullData(base_data, obs.reshape([subsample_size, n_x,n_y]).detach())
         return obs, data
     

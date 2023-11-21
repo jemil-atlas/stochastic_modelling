@@ -6,6 +6,9 @@ For this, do the following:
     2. Build stochastic model
     3. Inference
     4. Plots and illustrations
+    
+The script is meant solely for educational and illustrative purposes. Written by
+Jemil Avers Butt, Atlas optimization GmbH, www.atlasoptimization.com.
 """
 
 """
