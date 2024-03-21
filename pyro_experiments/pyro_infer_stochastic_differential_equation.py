@@ -25,6 +25,7 @@ Jemil Avers Butt, Atlas optimization GmbH, www.atlasoptimization.com.
 
 import torch
 import pyro
+import copy
 import matplotlib.pyplot as plt
 
 
@@ -82,7 +83,7 @@ for k in range(n_simu):
 # i) Pyro forward model
 
 def model(signal):
-    A_param = pyro.param("A_param", init_tensor = A_true.detach() )
+    A_param = pyro.param("A_param", init_tensor = copy.copy(torch.tensor(A_true.detach().numpy())) )
     # A_param = pyro.param("A_param", init_tensor = torch.eye(n_time) )
     # A_param = pyro.param("A_param", init_tensor = 0.01* torch.randn([n_time,n_time]) )
     
@@ -162,14 +163,28 @@ plt.tight_layout()  # Adjust the layout
 plt.show()
 
 
-# ii) Plot latent z
+# ii) Plot signal
 
 n_illu = 20
 n_illu = torch.min(torch.tensor([n_illu,n_simu]))
+
+fig, axs = plt.subplots(1, 1, figsize=(12, 6))  # 1 row, 2 columns
+# Display true system noise
+axs.plot(time, signal[0:n_illu,:].T)
+axs.set_title('True signal')
+axs.set_xlabel('time')
+
+
+plt.tight_layout()  # Adjust the layout
+plt.show()
+
+
+
+# iii) Plot latent z
+
 z_inferred = model(signal).detach()
 
 fig, axs = plt.subplots(1, 2, figsize=(12, 6))  # 1 row, 2 columns
-
 # Display true system noise
 axs[0].plot(time, system_noise[0:n_illu,:].T)
 axs[0].set_title('True latents')
