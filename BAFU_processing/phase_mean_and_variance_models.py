@@ -30,18 +30,26 @@ import matplotlib.pyplot as plt
 import torch
 import copy
 from scipy.io import loadmat
+from datetime import date
 
 
 # ii) Load data
 torch.set_default_dtype(torch.float64)
-data = loadmat('../data_stochastic_modelling/data_bafu_stochastic_model/submatrix_collection_training_20x20_2023_2days.mat')
+# data = loadmat('../data_stochastic_modelling/data_bafu_stochastic_model/submatrix_collection_training_20x20_2023_2days.mat')
+data = loadmat('../data_stochastic_modelling/data_bafu_stochastic_model/submatrix_collection_training_20x20_2023_mli_2days.mat')
 data_struct = data['submatrix_collection']
-phase_vals_data = data_struct[0][0][0]
+# phase_vals_data = data_struct[0][0][0]
+phase_vals_data = np.angle(data_struct[0][0][0])
 info_mats_data = data_struct[0][0][1]
 
 # Delete_data_for easier debugging
-phase_vals_data = phase_vals_data[1000:1010,:]
-info_mats_data = info_mats_data[1000:1010,:,:]
+nice_patch_unw = np.linspace(1000, 1010,11).astype(int)
+nice_patch_mli = np.linspace(1810, 1820,11).astype(int)
+many_patch_mli = np.linspace(1810, 2000,191).astype(int)
+
+patch_choice = nice_patch_mli
+phase_vals_data = phase_vals_data[patch_choice,:]
+info_mats_data = info_mats_data[patch_choice,:,:]
 
 
 # iii) Definitions
@@ -59,6 +67,7 @@ xx, yy = np.meshgrid(y,x)
 x_vec = np.vstack((xx.flatten(), yy.flatten())).T
 
 pyro.clear_param_store()
+today = date.today()
 
 
 
@@ -149,54 +158,86 @@ full_data = FullData(base_data, phase_mats)
 # i) Auxiliary definitions
 
 list_regression_vars = ['x_mats', 'y_mats', 'z_mats', 'coherence_mats', 'aoi_mats']
+# list_regression_vars = ['coherence_mats']
 n_regression_vars = len(list_regression_vars)
 regression_data = base_data.extract_regression_tensor(list_regression_vars)
 
-def mean_function(regression_data, alpha_0, alpha_1, alpha_2):
+def mean_function(regression_data, alpha_0, alpha_1, alpha_2, simplicity = False):
     mu_1 = alpha_0
     mu_2 = torch.einsum('ijkl, l -> ijk', regression_data, alpha_1)
     regvar_products = torch.einsum('ijkl, ijkm -> ijklm', regression_data, regression_data)
     mu_3 = torch.einsum('ijklm, lm -> ijk', regvar_products, alpha_2)
     
-    mu = mu_1 + mu_2 + mu_3
+    if simplicity == True:    
+        mu = mu_1 + mu_2 
+    else:
+        mu = mu_1 + mu_2 + mu_3
     return mu
 
 
-def var_function(regression_data, beta_0, beta_1, beta_2):
+def var_function(regression_data, beta_0, beta_1, beta_2, simplicity = False):
     sigma_1 = beta_0
     sigma_2 = torch.einsum('ijkl, l -> ijk', regression_data, beta_1)
     regvar_products = torch.einsum('ijkl, ijkm -> ijklm', regression_data, regression_data)
     sigma_3 = torch.einsum('ijklm, lm -> ijk', regvar_products, beta_2)
     
-    sigma = torch.sqrt(sigma_1**2 + sigma_2**2 + sigma_3**2)
+    if simplicity == True:    
+        sigma = torch.exp(sigma_1 + sigma_2) + 1e-5
+    else:
+        sigma = torch.exp(sigma_1 + sigma_2 + sigma_3) + 1e-5
     return sigma
 
 
 
 # iii) Stochastic model
 
-subsample_size = 8
+subsample_size = 10
+simplicity = True
+
 def model(regression_data, observations = None):
-    alpha_0 = pyro.param('alpha_0', torch.ones([1]))
-    alpha_1 = pyro.param('alpha_1', torch.ones([n_regression_vars]))
-    alpha_2 = pyro.param('alpha_2', torch.ones([n_regression_vars, n_regression_vars]))
+    alpha_0 = pyro.param('alpha_0', torch.zeros([1]))
+    alpha_1 = pyro.param('alpha_1', torch.zeros([n_regression_vars]))
+    alpha_2 = pyro.param('alpha_2', torch.zeros([n_regression_vars, n_regression_vars]))
     
-    beta_0 = pyro.param('beta_0', torch.ones([1]))
-    beta_1 = pyro.param('beta_1', torch.ones([n_regression_vars]))
-    beta_2 = pyro.param('beta_2', torch.ones([n_regression_vars, n_regression_vars]))
+    beta_0 = pyro.param('beta_0', 1*torch.ones([1]))
+    beta_1 = pyro.param('beta_1', 0*torch.ones([n_regression_vars]))
+    beta_2 = pyro.param('beta_2', 0*torch.ones([n_regression_vars, n_regression_vars]))
         
     with pyro.plate('batch_plate', size = n_samples, dim = -3, subsample_size = subsample_size) as ind:
-        mu = mean_function(regression_data[ind,...], alpha_0, alpha_1, alpha_2)
-        sigma = var_function(regression_data[ind,...], beta_0, beta_1, beta_2)
+        mu = mean_function(regression_data[ind,...], alpha_0, alpha_1, alpha_2, simplicity = simplicity)
+        sigma = var_function(regression_data[ind,...], beta_0, beta_1, beta_2, simplicity = simplicity)
         data_dist = pyro.distributions.Normal(mu, sigma)
+        subsampled_observations = observations[ind,...] if observations is not None else None
         
         with pyro.plate('y_plate', size = n_y, dim = -2):
             with pyro.plate('x_plate', size = n_x, dim = -1):
-                phase_sample = pyro.sample('phase_sample', data_dist, obs = observations)
+                phase_sample = pyro.sample('phase_sample', data_dist, obs = subsampled_observations)
                 
-    return phase_sample
+    return phase_sample, mu, sigma
 
-simulation_pretrain = copy.copy(model(regression_data)).reshape([subsample_size, n_x,n_y])   
+# def model(regression_data, observations = None):
+#     alpha_0 = pyro.param('alpha_0', torch.zeros([1]))
+#     alpha_1 = pyro.param('alpha_1', torch.zeros([n_regression_vars]))
+#     alpha_2 = pyro.param('alpha_2', torch.zeros([n_regression_vars, n_regression_vars]))
+    
+#     beta_0 = pyro.param('beta_0', 1*torch.ones([1]))
+#     beta_1 = pyro.param('beta_1', 0*torch.ones([n_regression_vars]))
+#     beta_2 = pyro.param('beta_2', 0*torch.ones([n_regression_vars, n_regression_vars]))
+       
+#     mu = mean_function(regression_data, alpha_0, alpha_1, alpha_2, simplicity = simplicity)
+#     sigma = var_function(regression_data, beta_0, beta_1, beta_2, simplicity = simplicity)
+#     data_dist = pyro.distributions.Normal(mu, sigma)
+#     observations_or_None = observations if observations is not None else None
+    
+#     with pyro.plate('batch_plate', size = n_samples, dim = -3):        
+#         with pyro.plate('y_plate', size = n_y, dim = -2):
+#             with pyro.plate('x_plate', size = n_x, dim = -1):
+#                 phase_sample = pyro.sample('phase_sample', data_dist, obs = observations_or_None)
+                
+#     return phase_sample, mu, sigma
+
+simulation_pretrain, mu_pretrain, sigma_pretrain = copy.copy(model(regression_data))
+simulation_pretrain = simulation_pretrain.reshape([subsample_size, n_x,n_y])   
 
 
 # iv) Guide
@@ -212,29 +253,43 @@ def guide(regression_data, observations = None):
 # i) Set up training
 
 # specifying scalar options
-learning_rate = 0.01
-num_epochs = 200
+learning_rate = 1e-4
+num_epochs = 30000
 adam_args = {"lr" : learning_rate}
 
 # Setting up svi
-optimizer = pyro.optim.AdamW(adam_args)
+optimizer = pyro.optim.NAdam(adam_args)
 elbo_loss = pyro.infer.Trace_ELBO()
 svi = pyro.infer.SVI(model = model, guide = guide, optim = optimizer, loss = elbo_loss)
 
 
 # ii) Execute training
 
+model_save_path = '../results_stochastic_modelling/results_bafu_stochastic_model/phase_mean_and_variance_models_{}.pth'.format(today)
+best_loss = float('inf')
 train_elbo = []
 for epoch in range(num_epochs):
     epoch_loss = svi.step(regression_data, phase_mats)
-    train_elbo.append(-epoch_loss)
-    if epoch % 10 == 0:
+    train_elbo.append(epoch_loss)
+    
+    # # Check if the current model is better than what we've seen before
+    # if epoch_loss < 0.99*best_loss:
+    #     best_loss = epoch_loss
+    #     # Save the model
+    #     pyro.get_param_store().save(model_save_path)
+    #     print(f"Saved the model at epoch {epoch} with loss {best_loss}")
+    
+    if epoch % 100 == 0:
         print("Epoch : {} train loss : {}".format(epoch, epoch_loss))
+
+# Load best parameters
+# pyro.get_param_store().load(model_save_path)
 
 
 # iii) Simulation posttraining
 
-simulation_posttrain = copy.copy(model(regression_data)).reshape([subsample_size, n_x,n_y])
+simulation_posttrain, mu_posttrain, sigma_posttrain = copy.copy(model(regression_data))
+simulation_posttrain = simulation_posttrain.reshape([subsample_size, n_x,n_y])
 
 
 
@@ -243,13 +298,83 @@ simulation_posttrain = copy.copy(model(regression_data)).reshape([subsample_size
 """
 
 
+# i) Illustrate training
+
+fig = plt.figure(1, dpi = 300)
+plt.plot(train_elbo)
+plt.title('Training loss')
+plt.xlabel('Step nr')
+plt.ylabel('Loss')
 
 
+# i) Illustrate data
+
+fig, axs = plt.subplots(3, 4, figsize=(15, 9))
+
+attributes = [full_data.phase_mats, full_data.coherence_mats, full_data.z_mats, full_data.aoi_mats]
+titles = ["Phase Mats", "Coherence Mats", "Elevation Mats", "AOI Mats"]
+
+for i in range(3):  # loop over samples
+    for j in range(4):  # loop over attributes
+        ax = axs[i, j]
+        attribute = attributes[j]
+        ax.imshow(attribute[i, :, :])
+        if i == 0:
+            ax.set_title(titles[j])
+
+        ax.axis('off')
+
+plt.tight_layout()
+plt.show()
 
 
+# ii) Illustrate data, initial simulations, trained simulations
+
+fig, axs = plt.subplots(5, 3, figsize=(9, 15))
+
+attributes = [full_data.phase_mats, simulation_pretrain.detach(), simulation_posttrain.detach()]
+titles = ["Phase: data", "pretrain", " posttrain"]
+
+for i in range(5):  # loop over samples
+    for j in range(3):  # loop over attributes
+        ax = axs[i, j]
+        attribute = attributes[j]
+        ax.imshow(attribute[i, :, :], vmin = -3, vmax = 3)
+        if i == 0:
+            ax.set_title(titles[j])
+
+        ax.axis('off')
+
+plt.tight_layout()
+plt.show()
 
 
+# ii) Illustrate mean and variance
 
+fig, axs = plt.subplots(2, 5, figsize=(10, 5))
+
+axs[0,0].imshow(full_data.coherence_mats[0,:,:])
+axs[0,1].imshow(full_data.x_mats[0,:,:])
+axs[0,2].imshow(full_data.y_mats[0,:,:])
+axs[0,3].imshow(full_data.z_mats[0,:,:])
+axs[0,4].imshow(full_data.aoi_mats[0,:,:])
+
+axs[1,1].imshow(mu_pretrain[0,:,:].detach())
+axs[1,2].imshow(sigma_pretrain[0,:,:].detach())
+axs[1,3].imshow(mu_posttrain[0,:,:].detach())
+axs[1,4].imshow(sigma_posttrain[0,:,:].detach())
+
+titles = ["Coherence", "x values", "y values", "z values", "AOI", "", \
+          "mu pretrain", "sigma pretrain" , "mu posttrain" , "sigma posttrain"]
+
+for i in range(2):  # loop over samples
+    for j in range(5):  # loop over attributes
+        ax = axs[i,j]
+        ax.set_title(titles[5*i+j])
+        ax.axis('off')
+
+plt.tight_layout()
+plt.show()
 
 
 
