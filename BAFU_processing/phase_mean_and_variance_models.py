@@ -51,6 +51,11 @@ patch_choice = nice_patch_mli
 phase_vals_data = phase_vals_data[patch_choice,:]
 info_mats_data = info_mats_data[patch_choice,:,:]
 
+# Data normalization
+data_mean = info_mats_data.mean(axis=(0, 1), keepdims=True)
+data_std = info_mats_data.std(axis=(0, 1), keepdims=True)
+info_mats_data = (info_mats_data - data_mean) / (data_std + 1e-6)
+
 
 # iii) Definitions
 
@@ -191,10 +196,11 @@ def var_function(regression_data, beta_0, beta_1, beta_2, simplicity = False):
 
 # iii) Stochastic model
 
-subsample_size = 10
-simplicity = True
+subsample_size = 11
+simplicity = False
 
 def model(regression_data, observations = None):
+    # Instantiate parameters
     alpha_0 = pyro.param('alpha_0', torch.zeros([1]))
     alpha_1 = pyro.param('alpha_1', torch.zeros([n_regression_vars]))
     alpha_2 = pyro.param('alpha_2', torch.zeros([n_regression_vars, n_regression_vars]))
@@ -203,6 +209,7 @@ def model(regression_data, observations = None):
     beta_1 = pyro.param('beta_1', 0*torch.ones([n_regression_vars]))
     beta_2 = pyro.param('beta_2', 0*torch.ones([n_regression_vars, n_regression_vars]))
         
+    # Determine distribution and sample from it
     with pyro.plate('batch_plate', size = n_samples, dim = -3, subsample_size = subsample_size) as ind:
         mu = mean_function(regression_data[ind,...], alpha_0, alpha_1, alpha_2, simplicity = simplicity)
         sigma = var_function(regression_data[ind,...], beta_0, beta_1, beta_2, simplicity = simplicity)
@@ -213,28 +220,13 @@ def model(regression_data, observations = None):
             with pyro.plate('x_plate', size = n_x, dim = -1):
                 phase_sample = pyro.sample('phase_sample', data_dist, obs = subsampled_observations)
                 
+    # Optional regularization
+    reg_coeff = 0.1
+    l1_norm_reg = torch.linalg.norm(alpha_1, ord = 1) + torch.linalg.norm(alpha_2, ord = 1) \
+        + torch.linalg.norm(beta_1, ord = 1) + torch.linalg.norm(beta_2, ord = 1)
+    pyro.factor('l1_reg', -reg_coeff * l1_norm_reg)
+    
     return phase_sample, mu, sigma
-
-# def model(regression_data, observations = None):
-#     alpha_0 = pyro.param('alpha_0', torch.zeros([1]))
-#     alpha_1 = pyro.param('alpha_1', torch.zeros([n_regression_vars]))
-#     alpha_2 = pyro.param('alpha_2', torch.zeros([n_regression_vars, n_regression_vars]))
-    
-#     beta_0 = pyro.param('beta_0', 1*torch.ones([1]))
-#     beta_1 = pyro.param('beta_1', 0*torch.ones([n_regression_vars]))
-#     beta_2 = pyro.param('beta_2', 0*torch.ones([n_regression_vars, n_regression_vars]))
-       
-#     mu = mean_function(regression_data, alpha_0, alpha_1, alpha_2, simplicity = simplicity)
-#     sigma = var_function(regression_data, beta_0, beta_1, beta_2, simplicity = simplicity)
-#     data_dist = pyro.distributions.Normal(mu, sigma)
-#     observations_or_None = observations if observations is not None else None
-    
-#     with pyro.plate('batch_plate', size = n_samples, dim = -3):        
-#         with pyro.plate('y_plate', size = n_y, dim = -2):
-#             with pyro.plate('x_plate', size = n_x, dim = -1):
-#                 phase_sample = pyro.sample('phase_sample', data_dist, obs = observations_or_None)
-                
-#     return phase_sample, mu, sigma
 
 simulation_pretrain, mu_pretrain, sigma_pretrain = copy.copy(model(regression_data))
 simulation_pretrain = simulation_pretrain.reshape([subsample_size, n_x,n_y])   
@@ -254,7 +246,7 @@ def guide(regression_data, observations = None):
 
 # specifying scalar options
 learning_rate = 1e-4
-num_epochs = 30000
+num_epochs = 10000
 adam_args = {"lr" : learning_rate}
 
 # Setting up svi
@@ -349,7 +341,7 @@ plt.tight_layout()
 plt.show()
 
 
-# ii) Illustrate mean and variance
+# iii) Illustrate mean and variance
 
 fig, axs = plt.subplots(2, 5, figsize=(10, 5))
 
@@ -377,10 +369,35 @@ plt.tight_layout()
 plt.show()
 
 
+# iv) Illustrate the parameters
 
+param_dict = {}
+for param, value in pyro.get_param_store().items():
+    param_dict[param] = value
 
+fig, axs = plt.subplots(2, 2, figsize=(10, 10))
+# alpha values
+axs[0,0].bar(torch.linspace(0,n_regression_vars,n_regression_vars+1),
+             torch.cat((param_dict['alpha_0'].detach().reshape([1]),
+                        param_dict['alpha_1'].detach())))
+axs[0,0].set_xlabel('alpha')
+axs[0,0].set_ylabel('param value')
+axs[0,0].set_title('Parameter values alpha_0, alpha_1')
 
+axs[0,1].imshow(param_dict['alpha_2'].detach())
+axs[0,1].set_xlabel('alpha_2_ij')
+axs[0,1].set_ylabel('alpha_2_ij')
+axs[0,1].set_title('Parameter values alpha_2')
 
+# beta_values
+axs[1,0].bar(torch.linspace(0,n_regression_vars,n_regression_vars+1),
+             torch.cat((param_dict['beta_0'].detach().reshape([1]),
+                        param_dict['beta_1'].detach())))
+axs[1,0].set_xlabel('beta')
+axs[1,0].set_ylabel('param value')
+axs[1,0].set_title('Parameter values beta_0, beta_1')
 
-
-
+axs[1,1].imshow(param_dict['beta_2'].detach())
+axs[1,1].set_xlabel('beta_2_ij')
+axs[1,1].set_ylabel('beta_2_ij')
+axs[1,1].set_title('Parameter values beta_2')
