@@ -279,8 +279,8 @@ simulation_pretrain = simulation_pretrain.reshape([-1, n_x,n_y])
 # i) Set up training
 
 # specifying scalar options
-learning_rate = 1e-5
-num_epochs = 10000
+learning_rate = 3*1e-5
+num_epochs = 15000
 adam_args = {"lr" : learning_rate}
 
 # Setting up svi
