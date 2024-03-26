@@ -135,18 +135,40 @@ base_data = BaseData(info_mats_data, dict_ind_base_data)
 
 
 # full outputs of stochastic model
+
+def convert_covmat_to_correlation(cov_mat):
+    # Assuming std is your matrix of shape [10, 400] with standard deviations
+    inv_std = (1 / (np.sqrt(np.diagonal(cov_mat, axis1=1, axis2=2)) + 1e-3))
+    
+    inv_std_diag_matrices = np.zeros(cov_mat.shape)
+    rows, cols = np.diag_indices_from(inv_std_diag_matrices[0])
+    inv_std_diag_matrices[:, rows, cols] = inv_std
+    
+    corrmats = np.matmul(inv_std_diag_matrices, np.matmul(cov_mat, inv_std_diag_matrices))
+    return corrmats
+
+
 class FullData():
     def __init__(self, base_data, phase_mats, **optional_input):
         self.K_phase_mats = optional_input.get('K_phase_mats', None)
         if self.K_phase_mats is not None:
                 n_samples = self.K_phase_mats.shape[0]
                 variances = np.diagonal(self.K_phase_mats.detach(), axis1=1, axis2=2)
+                std = np.sqrt(np.diagonal(self.K_phase_mats.detach(), axis1=1, axis2=2))
+                self.correlation_matrices = convert_covmat_to_correlation(self.K_phase_mats.detach())
+                
                 covariances =  np.hstack((np.diagonal(self.K_phase_mats.detach(), 
                         offset = 1, axis1=1, axis2=2), np.zeros([n_samples,1])))
                 covariances = variances.reshape((n_samples, n_x, n_y))
                 covariances = covariances[:,:,:-1]
-                self.aps_variance_mats = variances.reshape((n_samples, n_x, n_y))
+                correlations =  np.hstack((np.diagonal(self.correlation_matrices, 
+                        offset = 1, axis1=1, axis2=2), np.zeros([n_samples,1])))
+                correlations = correlations.reshape((n_samples, n_x, n_y))
+                correlations = correlations[:,:,:-1]
+                
+                self.variance_mats = variances.reshape((n_samples, n_x, n_y))
                 self.covariances = covariances
+                self.correlations = correlations
                 
         # List distributional_data
         def get_distributional_attr_list(self):
@@ -278,7 +300,8 @@ class TRIStochastics(pyro.nn.PyroModule):
     def guide(self, base_data, observations = None):
         pass
 
-list_inputs = ['x_mats', 'y_mats', 'z_mats', 'aoi_mats', 'coherence_mats' ]
+list_inputs = ['range_mats', 'azimuth_mats', 'z_mats', 'aoi_mats', 'coherence_mats' ]
+# list_inputs = ['x_mats', 'y_mats', 'z_mats', 'aoi_mats', 'coherence_mats' ]
 # list_inputs = ['x_mats', 'y_mats' ]
 # list_inputs = ['coherence_mats' ]
 tri_stochastics = TRIStochastics(list_inputs, 50, 20, base_data)
@@ -303,7 +326,7 @@ simulation_pretrain = copy.copy(simulation_pretrain.reshape([n_illu, n_x,n_y]))
 
 # specifying scalar options
 learning_rate = 0.1
-num_epochs = 100
+num_epochs = 10
 adam_args = {"lr" : learning_rate}
 
 # Setting up svi
@@ -394,8 +417,107 @@ plt.show()
 
 # iii) Plot variance maps, correlation maps, covariance matrices
 
-def plot_covariance_info(base_data, full_data):
-    pass
+def plot_covariance_info_real(base_data, illustration_index):
+    simulations, full_data_simulations = copy.copy(tri_stochastics.eval_model(base_data, illustration_choice))
+    basic_attr_name_list = list(dict_ind_base_data.keys())
+    basic_attr_list_temp = [getattr(full_data_simulations, name) for name in basic_attr_name_list]
+    basic_attr_list = [basic_attr[illustration_choice,...] for basic_attr in basic_attr_list_temp]
+    fig, axs = plt.subplots(3, 3, figsize=(9, 9))  
+    for i in range(3):
+        for j in range(3):
+            axs[i, j].imshow(basic_attr_list[i * 3 + j][illustration_index,...])
+            axs[i, j].set_title(basic_attr_name_list[i*3+j])  # Hide axis
+            axs[i, j].axis('off')  # Hide axis
+    
+    plt.tight_layout()
+    plt.show()
+    
+    fig, axs = plt.subplots(1, 3, figsize=(10, 5))  
+    axs[0].imshow(full_data_simulations.K_phase_mats[illustration_index,...].detach())
+    axs[0].set_title('Full Covariance matrix')
+    axs[0].axis('off')
+    
+    axs[1].imshow(full_data_simulations.variance_mats[illustration_index,...])
+    axs[1].set_title('Variances')
+    axs[1].axis('off')
+    
+    axs[2].imshow(full_data_simulations.correlations[illustration_index,...])
+    axs[2].set_title('Correlations between neighbors')
+    axs[2].axis('off')
+    fig.suptitle('Predicted distributional parameters')
+    plt.tight_layout()
+    plt.show()
+
+
+plot_covariance_info_real(base_data, 0)
+
+
+# Build synthetic data to illustrate the impact of certain explanatory variables
+
+synth_data_dict_init = {'aoi_mats' : 0 ,\
+                'azimuth_mats' : 0 ,\
+                'coherence_mats' : 0.5 ,\
+                'meanphase_mats' : 0 ,\
+                'range_mats' : 0 ,\
+                'time_mats' : 0 ,\
+                'x_mats' : 0 ,\
+                'y_mats' : 0 ,\
+                'z_mats' : 0 }
+synth_data_dict_z = copy.copy(synth_data_dict_init)
+synth_data_dict_z['z_mats'] =  True
+synth_data_dict_range = copy.copy(synth_data_dict_init)
+synth_data_dict_range['range_mats'] =  True
+synth_data_dict_coh = copy.copy(synth_data_dict_init)
+synth_data_dict_coh['coherence_mats'] =  True
+    
+def build_synthetic_base_data(base_data, synth_data_dict):
+    synth_base_data = copy.copy(base_data)
+    basic_attr_name_list = list(dict_ind_base_data.keys())
+    for name in basic_attr_name_list:
+        if synth_data_dict[name]  == True:
+            pass
+        else:
+            original_attr = getattr(synth_base_data, name)
+            original_dims = original_attr.shape
+            setattr(synth_base_data, name, synth_data_dict[name]*torch.ones(original_dims))
+    
+    return synth_base_data
+    
+    
+    
+def plot_covariance_info_synthetic(base_data, synth_data_dict, illustration_index):
+    synth_base_data = build_synthetic_base_data(base_data, synth_data_dict)    
+    
+    simulations, full_data_simulations = copy.copy(tri_stochastics.eval_model(synth_base_data, illustration_choice))
+    basic_attr_name_list = list(dict_ind_base_data.keys())
+    basic_attr_list_temp = [getattr(full_data_simulations, name) for name in basic_attr_name_list]
+    basic_attr_list = [basic_attr[illustration_choice,...] for basic_attr in basic_attr_list_temp]
+
+    fig, axs = plt.subplots(1, 4, figsize=(10, 5))  
+    exp_var_name = [key for key, value in synth_data_dict.items() if value is True][0]
+    explanatory_variable = getattr(full_data_simulations, exp_var_name)[illustration_index,...].detach()
+    axs[0].imshow(explanatory_variable)
+    axs[0].set_title('Variable {}'.format(exp_var_name))
+    axs[0].axis('off')
+    
+    axs[1].imshow(full_data_simulations.K_phase_mats[illustration_index,...].detach())
+    axs[1].set_title('Full Covariance matrix')
+    axs[1].axis('off')
+    
+    axs[2].imshow(full_data_simulations.variance_mats[illustration_index,...])
+    axs[2].set_title('Variances')
+    axs[2].axis('off')
+    
+    axs[3].imshow(full_data_simulations.correlations[illustration_index,...])
+    axs[3].set_title('Correlations between neighbors')
+    axs[3].axis('off')
+    fig.suptitle('Predicted distributional parameters')
+    plt.tight_layout()
+    plt.show()
+
+plot_covariance_info_synthetic(base_data, synth_data_dict_z, 0)
+plot_covariance_info_synthetic(base_data, synth_data_dict_range, 0)
+plot_covariance_info_synthetic(base_data, synth_data_dict_coh, 0)
 
 
 # Invoke the plots for the illustration_choice
