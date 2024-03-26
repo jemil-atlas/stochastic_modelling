@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+Produces images and models for the "Temporal model" section in the BAFU Report.
 The goal of this script is to train a stochastic model for TRI timeseries of
 individual pixels. Learning variances and correlations lengths employs pyro's
 svi formalism and real radar data from breithorn. The stochastic model is made up
@@ -311,6 +312,8 @@ list_inputs = ['coherence_mats', 'time_mats' ]
 
 tri_stochastics = TRIStochastics(list_inputs, 100, base_data)
 observations = full_data.phase_mats.reshape([n_samples, -1])
+
+pyro.render_model(tri_stochastics.model, model_args=(base_data,), render_distributions=True, render_params=True)
 
 
 # iv) Simulation pretraining

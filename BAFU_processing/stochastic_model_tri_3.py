@@ -33,7 +33,7 @@ from scipy.io import loadmat
 
 # ii) Load data
 torch.set_default_dtype(torch.float64)
-data = loadmat('./Data/submatrix_collection_training_20x20_2023_2days.mat')
+data = loadmat('../data_stochastic_modelling/data_bafu_stochastic_model/submatrix_collection_training_20x20_2023_mli_2days.mat')
 # data = loadmat('./Data/submatrix_collection_training_100x100_2023_2days.mat')
 data_struct = data['submatrix_collection']
 phase_vals_data = data_struct[0][0][0]
@@ -256,6 +256,8 @@ list_inputs = ['x_mats', 'y_mats' ]
 tri_stochastics = TRIStochastics(list_inputs, 50, 20, base_data)
 observations = full_data.phase_mats.reshape([n_samples, -1])
 
+pyro.render_model(tri_stochastics.model, model_args=(base_data,), render_distributions=True, render_params=True)
+
 
 # iv) Simulation pretraining
 
@@ -273,7 +275,7 @@ simulation_pretrain = copy.copy(simulation_pretrain.reshape([subsample_size, n_x
 
 # specifying scalar options
 learning_rate = 0.01
-num_epochs = 200
+num_epochs = 2000
 adam_args = {"lr" : learning_rate}
 
 # Setting up svi

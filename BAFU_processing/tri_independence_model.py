@@ -81,9 +81,6 @@ today = date.today()
 
 
 
-
-
-
 """
     2. Build auxiliary datasets
 """
@@ -188,7 +185,6 @@ def mean_function(regression_data, alpha_0, alpha_1, alpha_2, simplicity = False
         mu = mu_1 + mu_2 + mu_3
     return mu
 
-
 def var_function(regression_data, beta_0, beta_1, beta_2, simplicity = False):
     sigma_1 = beta_0
     sigma_2 = torch.einsum('ijkl, l -> ijk', regression_data, beta_1)
@@ -200,7 +196,6 @@ def var_function(regression_data, beta_0, beta_1, beta_2, simplicity = False):
     else:
         sigma = torch.exp(sigma_1 + sigma_2 + sigma_3) + 1e-5
     return sigma
-
 
 
 # iii) Stochastic model
@@ -245,7 +240,7 @@ pyro.render_model(model, model_args=(regression_data,), render_distributions=Tru
 def guide(regression_data, observations = None):
     pass
 
-def eval_model(regression_data, observations = None):
+def eval_model(regression_data):
     # Instantiate parameters
     alpha_0 = pyro.get_param_store()['alpha_0'].detach()
     alpha_1 = pyro.get_param_store()['alpha_1'].detach()
@@ -324,7 +319,7 @@ simulation_posttrain = simulation_posttrain.reshape([-1, n_x,n_y])
 """
 
 
-# i) Illustrate training
+# i) Illustrate training and data
 
 fig = plt.figure(1, dpi = 300)
 plt.plot(train_elbo)
@@ -332,8 +327,6 @@ plt.title('Training loss')
 plt.xlabel('Step nr')
 plt.ylabel('Loss')
 
-
-# i) Illustrate data
 
 fig, axs = plt.subplots(n_illu, 4, figsize=(15, 15))
 

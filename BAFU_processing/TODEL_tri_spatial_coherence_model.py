@@ -28,24 +28,36 @@ import matplotlib.pyplot as plt
 import torch
 import copy
 from scipy.io import loadmat
+from datetime import date
 
 
 # ii) Load data
 torch.set_default_dtype(torch.float64)
+# data = loadmat('../data_stochastic_modelling/data_bafu_stochastic_model/submatrix_collection_training_20x20_2023_2days.mat')
 data = loadmat('../data_stochastic_modelling/data_bafu_stochastic_model/submatrix_collection_training_20x20_2023_mli_2days.mat')
 data_struct = data['submatrix_collection']
-complex_vals_data = data_struct[0][0][0]
+# phase_vals_data = data_struct[0][0][0]
+phase_vals_data = np.angle(data_struct[0][0][0])
 info_mats_data = data_struct[0][0][1]
 
 # Delete_data_for easier debugging
-# index_set = [4100, 4110] # very smooth patch
-# index_set = [8000, 8010] # appealing pattern of low and high coherence
-# index_set = [1300, 1310] # noise-dominated blob due to low coherence
-index_set = [1950, 1960] # noise-dominated blob due to low coherence
-complex_vals_data = complex_vals_data[index_set[0]:index_set[1],:]
-abs_vals_data = np.abs(complex_vals_data)
-phase_vals_data = np.angle(complex_vals_data)
-info_mats_data = info_mats_data[index_set[0]:index_set[1],:,:]
+nice_patch_unw = np.linspace(1000, 1010,11).astype(int)
+nice_patch_mli = np.linspace(1810, 1820,11).astype(int)
+many_patch_mli = np.linspace(1810, 2000,191).astype(int)
+all_patch_mli = np.linspace(0,19999,20000).astype(int)
+
+# iii) Data preselection
+
+n_illu = 4
+patch_choice = all_patch_mli
+illustration_choice = np.round(np.linspace(0, len(patch_choice)-1, n_illu)).astype(int)
+phase_vals_data = phase_vals_data[patch_choice,:]
+info_mats_data = info_mats_data[patch_choice,:,:]
+
+# Data normalization
+data_mean = info_mats_data.mean(axis=(0, 1), keepdims=True)
+data_std = info_mats_data.std(axis=(0, 1), keepdims=True)
+info_mats_data = (info_mats_data - data_mean) / (data_std + 1e-6)
 
 
 # iii) Definitions
@@ -74,18 +86,18 @@ pyro.clear_param_store()
 
 # i) Compile datasets from loaded data
 
-# Transposition necessary since row wise/column wise unravelling difference 
-# between matlab and numpy
-# The sequence is range, az, x, y, z, coh, aoi, mean, time
-range_mats = torch.tensor(np.transpose(info_mats_data[:,:,0].reshape([-1,n_x,n_y]), (0,2,1))).double()
-azimuth_mats = torch.tensor(np.transpose(info_mats_data[:,:,1].reshape([-1,n_x,n_y]), (0,2,1))).double()
-x_mats = torch.tensor(np.transpose(info_mats_data[:,:,2].reshape([-1,n_x,n_y]), (0,2,1))).double()
-y_mats = torch.tensor(np.transpose(info_mats_data[:,:,3].reshape([-1,n_x,n_y]), (0,2,1))).double()
-z_mats = torch.tensor(np.transpose(info_mats_data[:,:,4].reshape([-1,n_x,n_y]), (0,2,1))).double()
-coherence_mats = torch.tensor(np.transpose(info_mats_data[:,:,5].reshape([-1,n_x,n_y]), (0,2,1))).double()
-aoi_mats = torch.tensor(np.transpose(info_mats_data[:,:,6].reshape([-1,n_x,n_y]), (0,2,1))).double()
-meanphase_mats = torch.tensor(np.transpose(info_mats_data[:,:,7].reshape([-1,n_x,n_y]), (0,2,1))).double()
-time_mats = torch.tensor(np.transpose(info_mats_data[:,:,8].reshape([-1,n_x,n_y]), (0,2,1))).double()
+# Create dictionary of types of base data information and associated indices
+
+dict_ind_base_data = {'range_mats' : 0,\
+                      'azimuth_mats' : 1,\
+                      'x_mats' : 2,\
+                      'y_mats' : 3,\
+                      'z_mats' : 4,\
+                      'coherence_mats' : 5,\
+                      'aoi_mats' : 6,\
+                      'meanphase_mats' : 7,\
+                      'time_mats' : 8,\
+                      }
 
 phase_mats = torch.tensor(np.transpose(phase_vals_data[:,:].reshape([-1,n_x,n_y]), (0,2,1))).double()
 
@@ -100,24 +112,33 @@ phase_mats = torch.tensor(np.transpose(phase_vals_data[:,:].reshape([-1,n_x,n_y]
 
 # basic inputs to stochastic model
 class BaseData():
-    def __init__(self, range_mats, azimuth_mats, x_mats, y_mats, z_mats, coherence_mats, aoi_mats, meanphase_mats, time_mats):
-        self.range_mats = range_mats
-        self.azimuth_mats = azimuth_mats
-        self.x_mats = x_mats
-        self.y_mats = y_mats
-        self.z_mats = z_mats
-        self.coherence_mats = coherence_mats
-        self.aoi_mats = aoi_mats
-        self.meanphase_mats = meanphase_mats
-        self.time_mats = time_mats
-                
+    def __init__(self, info_mats_data, dict_ind_base_data):
+        self.n_data = info_mats_data.shape[0]
+        for name, index in dict_ind_base_data.items():
+            base_data = torch.tensor(np.transpose(info_mats_data[:,:,index].reshape([-1,n_x,n_y]), (0,2,1))).double()
+            setattr(self, name, base_data)
+
         def get_basic_attr_list(self):
             attributes = [attr for attr in dir(self) if not (attr.startswith('__'))]
             return attributes
         self.basic_attribute_list = get_basic_attr_list(self)
         self.num_basic_attributes = len(self.basic_attribute_list)
         
-base_data = BaseData(range_mats, azimuth_mats,  x_mats, y_mats, z_mats, coherence_mats, aoi_mats, meanphase_mats, time_mats)
+    def extract_regression_tensor(self, list_regression_vars):
+        
+        regvar_list = []
+        for regvar in list_regression_vars:
+            regvar_list.append(getattr(self,regvar))
+        regression_tensor = torch.stack(regvar_list, dim = 3)
+        return regression_tensor
+        
+        # n_regvars = len(list_regression_vars)
+        # regression_tensor = torch.zeros([])
+        # for regvar in list_regression_vars:
+        #     getattr(self, regvar)
+            
+        
+base_data = BaseData(info_mats_data, dict_ind_base_data)
 
 
 # full outputs of stochastic model
@@ -257,11 +278,8 @@ class TRIStochastics(pyro.nn.PyroModule):
     def model(self, base_data, observations = None):
         # integrate different base_data
         self.integrate_base_data(self.list_inputs,base_data)       
-        # print("Samples:{}".format(self.n_samples))      
-        # TODO This is where the error comes from cov mat has wront dims, when called leading to wrong obs dist shapes
-        # cov_mats = covariance_function(self.map_to_l2, self.base_data_mats) 
-        # cov_regularizer = 1e-2*(torch.eye(n_total).repeat(self.n_samples, 1, 1))
-        
+
+        # build multivariate normal and sample from it        
         with pyro.plate('batch_plate',size = self.n_samples, dim = -1, subsample_size = subsample_size) as ind:
             K_noise_mats, K_smooth_mats, A_mats, B_mats = construct_cov_mats(self.ann_map, 
                                     self.base_data.coherence_mats[ind,:,:], self.base_data.x_mats[ind,:,:], self.base_data.y_mats[ind,:,:]) 
@@ -315,7 +333,7 @@ simulation_pretrain = copy.copy(simulation_pretrain.reshape([subsample_size, n_x
 
 # specifying scalar options
 learning_rate = 0.005
-num_epochs = 2000
+num_epochs = 20
 adam_args = {"lr" : learning_rate}
 
 # Setting up svi
@@ -600,6 +618,7 @@ def plot_realizations(base_data, full_data, **plotting_opts):
     # Plot data    
     n_rows_plot = 3
     n_cols_plot = np.max([n_base_data, n_realizations])
+    regression_tensor_illu = 
     base_data_slice = BaseData(torch.repeat_interleave((range_mats[scenario_index,:,:]).unsqueeze(0), subsample_size, dim = 0),
                                torch.repeat_interleave((azimuth_mats[scenario_index,:,:]).unsqueeze(0), subsample_size, dim = 0),
                                torch.repeat_interleave((x_mats[scenario_index,:,:]).unsqueeze(0), subsample_size, dim = 0),
