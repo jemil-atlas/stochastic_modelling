@@ -264,6 +264,7 @@ def eval_model(regression_data):
 simulation_pretrain, mu_pretrain, sigma_pretrain = copy.copy(eval_model(regression_data[illustration_choice,...]))
 simulation_pretrain = simulation_pretrain.reshape([-1, n_x,n_y]) 
 
+pyro.render_model(model, model_args=(regression_data,), render_distributions=True, render_params=True)
 
 
 

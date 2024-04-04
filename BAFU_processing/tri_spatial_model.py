@@ -54,7 +54,7 @@ all_patch_mli = np.linspace(0,19999,20000).astype(int)
 # iii) Data preselection
 
 n_illu = 4
-patch_choice = nice_patch_mli
+patch_choice = all_patch_mli
 illustration_choice = np.round(np.linspace(0, len(patch_choice)-1, n_illu)).astype(int)
 phase_vals_data = phase_vals_data[patch_choice,:]
 info_mats_data = info_mats_data[patch_choice,:,:]
@@ -236,7 +236,7 @@ def covariance_function(map_to_l2, base_data_mats):
         
 
 # iii) Stochastics class
-subsample_size = 8
+subsample_size = 16
 
 class TRIStochastics(pyro.nn.PyroModule):
     # Initialize the module
@@ -304,7 +304,7 @@ list_inputs = ['range_mats', 'azimuth_mats', 'z_mats', 'aoi_mats', 'coherence_ma
 # list_inputs = ['x_mats', 'y_mats', 'z_mats', 'aoi_mats', 'coherence_mats' ]
 # list_inputs = ['x_mats', 'y_mats' ]
 # list_inputs = ['coherence_mats' ]
-tri_stochastics = TRIStochastics(list_inputs, 50, 20, base_data)
+tri_stochastics = TRIStochastics(list_inputs, 100, 50, base_data)
 observations = full_data.phase_mats.reshape([n_samples, -1])
 
 pyro.render_model(tri_stochastics.model, model_args=(base_data,), render_distributions=True, render_params=True)
@@ -325,12 +325,12 @@ simulation_pretrain = copy.copy(simulation_pretrain.reshape([n_illu, n_x,n_y]))
 # i) Set up training
 
 # specifying scalar options
-learning_rate = 0.1
-num_epochs = 10
+learning_rate = 1e-10
+num_epochs = 100
 adam_args = {"lr" : learning_rate}
 
 # Setting up svi
-optimizer = pyro.optim.AdamW(adam_args)
+optimizer = pyro.optim.NAdam(adam_args)
 elbo_loss = pyro.infer.Trace_ELBO()
 svi = pyro.infer.SVI(model = tri_stochastics.model, guide = tri_stochastics.guide, optim = optimizer, loss= elbo_loss)
 
@@ -449,7 +449,7 @@ def plot_covariance_info_real(base_data, illustration_index):
     plt.show()
 
 
-plot_covariance_info_real(base_data, 0)
+plot_covariance_info_real(base_data, 3)
 
 
 # Build synthetic data to illustrate the impact of certain explanatory variables
@@ -515,9 +515,9 @@ def plot_covariance_info_synthetic(base_data, synth_data_dict, illustration_inde
     plt.tight_layout()
     plt.show()
 
-plot_covariance_info_synthetic(base_data, synth_data_dict_z, 0)
-plot_covariance_info_synthetic(base_data, synth_data_dict_range, 0)
-plot_covariance_info_synthetic(base_data, synth_data_dict_coh, 0)
+plot_covariance_info_synthetic(base_data, synth_data_dict_z, 3)
+plot_covariance_info_synthetic(base_data, synth_data_dict_range, 3)
+plot_covariance_info_synthetic(base_data, synth_data_dict_coh, 3)
 
 
 # Invoke the plots for the illustration_choice
