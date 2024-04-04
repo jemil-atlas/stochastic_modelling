@@ -33,6 +33,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 import copy
 from scipy.io import loadmat
+from datetime import date
 
 
 # ii) Load data
@@ -76,6 +77,7 @@ t = np.linspace(0,24,n_t)
 
 pyro.clear_param_store()
 writer = SummaryWriter('./Tensorboard/Experiment')
+today = date.today()
 
 
 
@@ -332,7 +334,7 @@ simulation_pretrain, full_data_pretrain = copy.copy(tri_stochastics.model(base_d
 
 # specifying scalar options
 learning_rate = 1*1e-3
-num_epochs = 5000
+num_epochs = 50
 adam_args = {"lr" : learning_rate}
 
 # Setting up svi
@@ -361,9 +363,9 @@ for epoch in range(num_epochs):
 writer.close()
 
 # save:
-# torch.save(tri_stochastics.state_dict(), '../results_stochastic_modelling/results_bafu_stochastic_model/ts_model.pth')
+# torch.save(tri_stochastics.state_dict(), '../results_stochastic_modelling/results_bafu_stochastic_model/ts_model_{}.pth'.format(today))
 # load
-# tri_stochastics.load_state_dict(torch.load('../results_stochastic_modelling/results_bafu_stochastic_model/ts_model.pth'))
+# tri_stochastics.load_state_dict(torch.load('../results_stochastic_modelling/results_bafu_stochastic_model/ts_model_{}.pth'.format(today)))
 # tri_stochastics.eval()  # Set the model to evaluation mode
 
 
