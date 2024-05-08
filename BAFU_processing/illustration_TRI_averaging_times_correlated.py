@@ -14,13 +14,14 @@ import torch
 import pyro
 import matplotlib.pyplot as plt
 from scipy.io import loadmat
+from scipy.io import savemat
 import copy
 
 
 # ii) Definitions
 
-n_r_average = 50
-n_az_average = 20
+n_r_average = 10
+n_az_average = 2
 n_t = 100
 n_t_h = n_t/30
 time = torch.linspace(0,n_t_h, n_t)
@@ -375,10 +376,11 @@ def get_averaging_length_for_pixel(i,j):
     # output is in nr of interferograms
     
     cov_mat = compute_cov_mat_for_pixel(i,j, n_t).detach()
+    cov_mat_cropped = torch.minimum(cov_mat, torch.tensor(3))
     
     variance = torch.zeros(n_t)
     for k in range(n_t):
-        variance[k] = (1/(k+1)**2) * torch.sum(cov_mat[0:k+1, 0:k+1])
+        variance[k] = (1/(k+1)**2) * torch.sum(cov_mat_cropped[0,0:k+1, 0:k+1])
     std_def = np.sqrt(variance) * np.abs(c_phase_to_def)
     averaging_length = torch.where(std_def <= 1)[0][0].item()
     
@@ -391,10 +393,12 @@ averaging_lengths = torch.zeros([n_r_new,n_az_new])
 for i in range(n_r_new):
     print('row nr {}'.format(i))
     for j in range(n_az_new):
-        averaging_lengths[i,j] = get_averaging_length_for_pixel(i,j)
+        averaging_lengths[i,j] = get_averaging_length_for_pixel(j,i)
 averaging_lengths_in_h = averaging_lengths/30
 averaging_lengths_in_min = averaging_lengths*2
 
+save_path = '../results_stochastic_modelling/results_bafu_stochastic_model/averaging_times_in_min_correlated.mat'
+savemat(save_path, {'averaging_lengths_in_m' : averaging_lengths_in_min.numpy()})
 
 plt.figure(2, figsize=(10, 10), dpi=300)
 img = plt.imshow(averaging_lengths_in_min, vmin = 0, vmax  = 15)  # Assuming averaging_lengths_in_h is defined elsewhere

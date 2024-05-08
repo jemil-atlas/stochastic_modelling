@@ -14,6 +14,7 @@ import torch
 import pyro
 import matplotlib.pyplot as plt
 from scipy.io import loadmat
+from scipy.io import savemat
 import copy
 
 
@@ -256,6 +257,10 @@ for i in range(n_r_new):
         averaging_lengths[i,j] = get_averaging_length_for_pixel(i,j)
 averaging_lengths_in_h = averaging_lengths/30
 averaging_lengths_in_min = averaging_lengths*2
+
+save_path = '../results_stochastic_modelling/results_bafu_stochastic_model/averaging_times_in_min_decorrelated.mat'
+savemat(save_path, {'averaging_lengths_in_m' : averaging_lengths_in_min.numpy()})
+
 
 fig, axs = plt.subplots(1,2, figsize = (10,5), dpi = 300)        
 
