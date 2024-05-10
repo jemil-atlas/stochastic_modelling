@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-The goal of this script is to illustrate 2D gaussian mixture model inference.
+The goal of this script is to illustrate 2D gaussian mixture model inference.To
+the samples of the mixture model, we add values dependent on some auxiliary data.
 Multiple clusters can be found in 2D data and we formulate a model that leverages
 discrete probability distributions to learn locations, covariances of the
 individual clusters and use inference on the latent class assignement variables
@@ -37,6 +38,7 @@ n_data = 100
 n_dim = 2
 n_clusters_true = 2
 n_clusters = 2
+time = torch.linspace(0,1,n_data)
 
 pyro.set_rng_seed(1)
 
@@ -52,7 +54,10 @@ pyro.set_rng_seed(1)
 mu_clusters_true = pyro.distributions.Uniform(-5,5).sample([n_clusters_true, n_dim])
 A_rand = pyro.distributions.Uniform(0,1).sample([n_clusters_true, n_dim,n_dim])
 cov_clusters_true = 0.5*(torch.bmm(A_rand, A_rand.permute([0,2,1])) + 0.5*torch.eye(n_dim).repeat([n_clusters_true,1,1]))
-    
+
+alpha_true = 20*torch.ones([n_dim,1])
+aux_effect = (alpha_true*time.unsqueeze(0).repeat([n_dim,1])).T
+
 
 # ii) Distributions and sampling
 
@@ -65,7 +70,7 @@ for k in range(n_data):
     data_locs[k,:] = mu_clusters_true[assignment_true[k],:]
     data_cov[k,:,:] = cov_clusters_true[assignment_true[k], :,:]
 data_dist = pyro.distributions.MultivariateNormal(loc = data_locs, covariance_matrix = data_cov)
-data = data_dist.sample()
+data = data_dist.sample() + aux_effect
 
 
 # iii) Record classes
@@ -103,15 +108,13 @@ def model(observations = None):
         
         # Diagnosis
         print("assignment.shape = {}".format(assignment.shape))
-        print("assignment_dist.batch_shape = {}".format(assignment_dist.batch_shape))
+        print("assignment_dist.shape = {}".format(assignment_dist.shape()))
         print("obs.shape = {}".format(obs.shape))
-        print("obs_dist.batch_shape = {}".format(obs_dist.batch_shape))
+        print("obs_dist.shape = {}".format(obs_dist.shape()))
         
         return obs, assignment
 
-simulation_untrained, assignment_untrained = copy.copy(model())
-simulation_untrained = simulation_untrained.detach()
-assignment_untrained = assignment_untrained.detach()
+simulation_untrained, assignment_untrained = copy.copy(model())[0].detach(), copy.copy(model())[1].detach()
 
 
 # ii) Guide
@@ -132,9 +135,6 @@ adam = pyro.optim.NAdam({"lr": 0.01})
 elbo = pyro.infer.TraceEnum_ELBO(max_plate_nesting = 1)
 svi = pyro.infer.SVI(model, guide, adam, elbo)
 
-# Diagnosis
-# elbo.loss(model, guide, data)
-
 loss_sequence = []
 for step in range(1000):
     loss = svi.step(data)
@@ -144,9 +144,7 @@ for step in range(1000):
         pass
     loss_sequence.append(loss)
     
-simulation_trained, assignment_trained = copy.copy(model())
-simulation_trained = simulation_trained.detach()
-assignment_trained = assignment_trained.detach()
+simulation_trained, assignment_trained = copy.copy(model())[0].detach(), copy.copy(model())[1].detach()
     
 
 # ii) Infer_discrete for class inference
