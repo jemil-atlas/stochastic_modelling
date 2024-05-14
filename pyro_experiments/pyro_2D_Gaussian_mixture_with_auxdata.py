@@ -40,7 +40,7 @@ n_clusters_true = 2
 n_clusters = 2
 time = torch.linspace(0,1,n_data)
 
-pyro.set_rng_seed(1)
+pyro.set_rng_seed(10)
 
 
 
@@ -55,7 +55,7 @@ mu_clusters_true = pyro.distributions.Uniform(-5,5).sample([n_clusters_true, n_d
 A_rand = pyro.distributions.Uniform(0,1).sample([n_clusters_true, n_dim,n_dim])
 cov_clusters_true = 0.5*(torch.bmm(A_rand, A_rand.permute([0,2,1])) + 0.5*torch.eye(n_dim).repeat([n_clusters_true,1,1]))
 
-alpha_true = 20*torch.ones([n_dim,1])
+alpha_true = 5*torch.ones([n_dim,1])
 aux_effect = (alpha_true*time.unsqueeze(0).repeat([n_dim,1])).T
 
 
@@ -86,40 +86,53 @@ for k in range(n_clusters_true):
 """
 
 
-# i) Model
+# i) Aux effect function
+
+def aux_effect_fun(time, alpha):
+    effect = (alpha*time.unsqueeze(0).repeat([n_dim,1])).T
+    return effect
+    
+
+# ii) Model
 
 @config_enumerate
-def model(observations = None):
+def model(time, observations = None):
     # Global variables
     mu_clusters = pyro.param('mu_clusters', torch.rand([n_clusters, n_dim]))
     cov_clusters = pyro.param('cov_clusters', torch.eye(n_dim).repeat([n_clusters,1,1]), 
                               pyro.distributions.constraints.positive_definite)
     rel_probs = pyro.param('rel_probs', (1/n_clusters)*torch.ones(n_clusters),
                            pyro.distributions.constraints.simplex)
+    alpha = pyro.param('alpha', torch.rand([n_dim,1]))
+    
+    aux_effect = aux_effect_fun(time, alpha)
     
     # Local variables
     n_obs_or_n_data = observations.shape[0] if observations is not None else n_data
-    with pyro.plate('batch_plate', size = n_obs_or_n_data, dim = -1):
+    with pyro.plate('batch_plate', size = n_obs_or_n_data, dim = -1) as ind:
         assignment_dist = pyro.distributions.Categorical(probs = rel_probs)
         assignment = pyro.sample('assignment', assignment_dist)
-        obs_dist = pyro.distributions.MultivariateNormal(loc = mu_clusters[assignment,:],
+        obs_dist = pyro.distributions.MultivariateNormal(loc = mu_clusters[assignment,:] + aux_effect[ind,:],
                                                          covariance_matrix = cov_clusters[assignment,:,:])
         obs = pyro.sample('obs', obs_dist, obs = observations)
         
-        # Diagnosis
-        print("assignment.shape = {}".format(assignment.shape))
-        print("assignment_dist.shape = {}".format(assignment_dist.shape()))
-        print("obs.shape = {}".format(obs.shape))
-        print("obs_dist.shape = {}".format(obs_dist.shape()))
+        # # Diagnosis
+        # print("assignment.shape = {}".format(assignment.shape))
+        # print("assignment_dist.batch_shape = {}".format(assignment_dist.batch_shape))
+        # print("obs.shape = {}".format(obs.shape))
+        # print("obs_dist.batch_shape = {}".format(obs_dist.batch_shape))
+        # print("obs_dist.shape = {}".format(obs_dist.shape()))
         
         return obs, assignment
 
-simulation_untrained, assignment_untrained = copy.copy(model())[0].detach(), copy.copy(model())[1].detach()
+simulation_untrained, assignment_untrained = copy.copy(model(time))
+simulation_untrained = simulation_untrained.detach()
+assignment_untrained = assignment_untrained.detach()
 
 
-# ii) Guide
+# iii) Guide
 
-def guide(observations = None):
+def guide(time, observations = None):
     pass
 
 
@@ -131,47 +144,29 @@ def guide(observations = None):
 
 # i) Pyro inference
 
-adam = pyro.optim.NAdam({"lr": 0.01})
+adam = pyro.optim.NAdam({"lr": 0.1})
 elbo = pyro.infer.TraceEnum_ELBO(max_plate_nesting = 1)
 svi = pyro.infer.SVI(model, guide, adam, elbo)
 
+# Diagnosis
+print("Sampling:")
+_ = model(time, data)
+print("Enumerated Inference:")
+_ = elbo.loss(model, guide, *(time,data))
+
 loss_sequence = []
 for step in range(1000):
-    loss = svi.step(data)
+    loss = svi.step(*(time,data))
     if step % 100 == 0:
         print('epoch: {} ; loss : {}'.format(step, loss))
     else:
         pass
     loss_sequence.append(loss)
     
-simulation_trained, assignment_trained = copy.copy(model())[0].detach(), copy.copy(model())[1].detach()
+simulation_trained, assignment_trained = copy.copy(model(time))
+simulation_trained = simulation_trained.detach()
+assignment_trained = assignment_trained.detach()
     
-
-# ii) Infer_discrete for class inference
-
-# Construct grid
-x = torch.linspace(-7,7, 100)
-y = torch.linspace(-7,7, 100)
-xx, yy = torch.meshgrid(x,y, indexing = 'xy')
-grid = torch.vstack((xx.flatten(), yy.flatten())).T
-
-# Take the grid and pass it to the guide to construct the posteriors of the
-# nondiscrete latents; then pass them to the model.
-# This is trivial here since the guide is empty (only parameters)
-guide_trace = pyro.poutine.trace(guide).get_trace(grid)  # record the globals
-trained_model = pyro.poutine.replay(model, trace=guide_trace)  # replay the globals
-
-# Define classifier by inferring discrete variables from trained model
-def classifier(data, temperature=0):
-    inferred_model = pyro.infer.infer_discrete(trained_model, temperature=temperature, 
-                                    first_available_dim=-2)  # avoid conflict with data plate
-    trace = pyro.poutine.trace(inferred_model).get_trace(data)
-    return trace.nodes["assignment"]["value"]
-
-class_predictions = classifier(grid)
-class_predictions = class_predictions.reshape([100,100]).flipud()
-
-
 
 
 """
@@ -214,11 +209,11 @@ ax[2].set_title('Data from trained model')
 # -> does mix the classes, probably because of config_enumerate since the model
 # enumerates all posible choices for the discrete latent.
 
-# decision boundaries
-ax[3].imshow(class_predictions)
-ax[3].set_title('Class predictions with posterior')
-ax[3].set_xticks([])
-ax[3].set_yticks([])
+# # decision boundaries
+# ax[3].imshow(class_predictions)
+# ax[3].set_title('Class predictions with posterior')
+# ax[3].set_xticks([])
+# ax[3].set_yticks([])
 
 
 

@@ -126,14 +126,21 @@ def guide(observations = None):
 """
 
 
-# i) Pyro inference
+# i) Pyro inference setup
 
 adam = pyro.optim.NAdam({"lr": 0.01})
 elbo = pyro.infer.TraceEnum_ELBO(max_plate_nesting = 1)
 svi = pyro.infer.SVI(model, guide, adam, elbo)
 
-# Diagnosis
-# elbo.loss(model, guide, data)
+# Diagnosis - discrete variable shape enumerated, dependent dist enumerated
+# data shape stays the same, gets broadcasted with enumerated shapes to logprobs
+print("Sampling:")
+_ = model(data)
+print("Enumerated Inference:")
+_ = elbo.loss(model, guide, data);
+
+
+# ii) Optimization
 
 loss_sequence = []
 for step in range(1000):
@@ -149,7 +156,7 @@ simulation_trained = simulation_trained.detach()
 assignment_trained = assignment_trained.detach()
     
 
-# ii) Infer_discrete for class inference
+# iii) Infer_discrete for class inference
 
 # Construct grid
 x = torch.linspace(-7,7, 100)
