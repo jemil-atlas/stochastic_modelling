@@ -13,6 +13,8 @@ For this, do the following:
     1. Definitions and imports ------------------------------------------------
 """
 
+# NEsted tensors as of now dont support autograd so you can forget about using it in
+# pyro right now.
 
 # ii) Imports
 
@@ -30,11 +32,19 @@ from torch import where
 
 # ii) Definitions
 
-n_data = 100
+n_batch = [3]
+n_sample = [5,10,15]
+n_event = [2]
 
 
 pyro.set_rng_seed(1)
 
+
+# # nested use
+# t1 = torch.ones([5])
+# t2 = torch.ones([10])
+# tnested = torch.nested.nested_tensor([t1,t2], layout = torch.jagged, requires_grad = True)
+# tnested.unbind()
 
 
 """
@@ -46,168 +56,26 @@ pyro.set_rng_seed(1)
 
 mu_true=torch.ones([2])
 sigma_true=0.1
-data=pyro.distributions.Normal(mu_true,sigma_true).sample([n_data])
+data_0=pyro.distributions.Normal(mu_true,sigma_true).sample([n_sample[0]])
+data_1=pyro.distributions.Normal(mu_true,sigma_true).sample([n_sample[1]])
+data_2=pyro.distributions.Normal(mu_true,sigma_true).sample([n_sample[2]])
 
-# functorch dimensions
-batch_dim, event_dim = dims(2)
-data_fc = data[batch_dim, event_dim]
+data_nested = torch.nested.nested_tensor([data_0, data_1, data_2], layout = torch.jagged)
+
+
 
 
 # ii) Invoke observations, latent variables, parameters, model
 
-# def model(observations = None):
-#     mu=pyro.param("mu", init_tensor = torch.zeros([1,event_dim.size]))
-    
-#     with pyro.plate("batch_plate",n_data, dim = -2):
-#         return pyro.sample("obs",dist.Normal(mu,sigma_true),obs = observations)
-
 def model(observations = None):
-    mu=pyro.param("mu", init_tensor = torch.zeros([1,event_dim.size]))
-    trivial_dim = dims(sizes = [1])
-        
-    mu_fc = mu[trivial_dim,event_dim]
-    obs_dist = dist.Normal(mu_fc.order(trivial_dim,event_dim),sigma_true).to_event(event_dim.dim())
+    mu=pyro.param("mu", init_tensor = torch.zeros([1,n_event[0]]))
+    mu_0 = mu*torch.ones([n_sample[0],1])
+    mu_1 = mu*torch.ones([n_sample[1],1])
+    mu_2 = mu*torch.ones([n_sample[2],1])
+    mu_nested = torch.nested.nested_tensor([mu_0, mu_1, mu_2], layout = torch.jagged)
     
-    dim_pos_batch = -1 - event_dim.dim()
-    
-    with pyro.plate("batch_plate",n_data, dim = dim_pos_batch):
-        return pyro.sample("obs",obs_dist,obs = observations)
-
-
-# # Multiple dim assignment test:
-# tens = torch.randn(2,3,4)
-# batch = dims()
-# event_1, event_2 = dims(2)
-# event_dims = (event_1,event_2)
-
-# # using iterative assignment
-# tens_fc = tens
-# for dim in (batch, *event_dims):
-#     tens_fc = tens_fc[dim] 
-
-# # using assignment function
-# def assign_dims(tensor, dims):
-#     for dim in dims:
-#         tensor = tensor[dim]
-#     return tensor
-
-# tens_2_fc = assign_dims(tens, (batch, event_dims))
-
-
-# # using direct tuple construction
-# dim_tuple = (batch, *event_dims)
-# tens_3_fc = tens[dim_tuple]
-
-
-# location of specific dim
-bd, ed = dims(2)
-dim_tuple = (bd,ed)
-aa = torch.rand([5,2])
-aa_fc = aa[bd,ed]
-
-
-def get_position(tensor, dim):
-    checkdims = tensor.dims
-    checklist = [dim is checkdim for checkdim in checkdims]
-    
-    index = [i for i, x in enumerate(checklist) if x]
-    
-    return index, checklist
-
-# # Multi assignment
-# class DimCollector():
-#     def __init__(self):
-#         self.dim_list = []
-    
-#     def dim_multi_assignment(self, dim_shapes: list, name: str) -> tuple:
-#         for k in range(len(dim_shapes)):
-#             dim_shape = dim_shapes[k] 
-#             dim_name = name + "_{}".format(k)
-#             setattr(self, dim_name, dims(sizes = [dim_shape]))
-#             self.dim_list.append(getattr(self, dim_name))
-                  
-# dim_shapes = [10,5]
-# name = 'bd'
-
-# batch_collector = DimCollector()
-# batch_collector.dim_multi_assignment(dim_shapes, name)
-
-# Multi_assignment by list
-
-dim_shapes = [10,5]
-dim_names = ['bd1', 'bd2']
-name = 'bd'
-
-# def multi_assignment_name(dim_shapes, name):
-#     name_list = []
-#     for k in range(len(dim_shapes)):
-#         name_list.append("{}_{}".format(name, k))
-#     exec_string = "{} = dims(sizs = {})".format(name_list, dim_shapes)
-#     eval(exec_string)
-
-# # multi_assignment_name(dim_shapes, name)
-
-# def multi_assignment(dim_shapes, dim_names):
-#     for k in range(len(dim_shapes)):
-#         exec_string = "{} = dims()".format(dim_names[k])
-#         print(exec_string)
-#         exec(exec_string)
-#     eval_string = '({})'.format(', '.join(dim_names))
-#     print(eval_string)
-#     dim_tuple = eval(eval_string)
-#     return dim_tuple
-
-# dt = multi_assignment(dim_shapes, dim_names)
-
-
-# Safe multi-assignment
-
-import re
-from functorch.dim import dims
-
-def restricted_exec(exec_string, allowed_locals):
-    # Allow only simple assignment of `dims` using a regular expression
-    if not re.match(r'^\w+\s*=\s*dims\(sizes=\[\d+(,\s*\d+)*\]\)$', exec_string):
-        raise ValueError("Invalid exec command")
-    
-    # Execute the command in a very limited scope
-    allowed_globals = {"dims": dims}
-    exec(exec_string, allowed_globals, allowed_locals)
-
-def dim_assignment(dim_shapes, dim_names):
-    # Validate inputs
-    if not all(isinstance(shape, int) and shape > 0 for shape in dim_shapes):
-        raise ValueError("All dimension shapes must be positive integers.")
-    
-    if not all(isinstance(name, str) and name.isidentifier() for name in dim_names):
-        raise ValueError("All dimension names must be valid Python identifiers.")
-    
-    # Create a local environment to hold the assigned dimensions
-    dims_locals = {}
-    for k in range(len(dim_shapes)):
-        exec_string = f"{dim_names[k]} = dims(sizes=[{dim_shapes[k]}])"
-        restricted_exec(exec_string, dims_locals)
-    
-    # Create a tuple of dimensions
-    eval_string = f"({', '.join(dim_names)})"
-    dim_tuple = safe_eval(eval_string, allowed_locals=dims_locals)
-    
-    return dim_tuple
-
-# Safe eval function
-def safe_eval(expr, allowed_globals=None, allowed_locals=None):
-    if allowed_globals is None:
-        allowed_globals = {}
-    if allowed_locals is None:
-        allowed_locals = {}
-    return eval(expr, {"__builtins__": None, **allowed_globals}, allowed_locals)
-
-# Example usage
-dim_shapes = [10, 5]
-dim_names = ['bd1', 'bd2']
-dt = dim_assignment(dim_shapes, dim_names)
-print(dt)
-
+    with pyro.plate("batch_plate",n_data, dim = -2):
+        return pyro.sample("obs",dist.Normal(mu,sigma_true),obs = observations)
 
 
 
