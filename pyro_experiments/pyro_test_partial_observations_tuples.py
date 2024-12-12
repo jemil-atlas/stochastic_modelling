@@ -168,6 +168,7 @@ spec_trace.nodes
 print(spec_trace.format_shapes())
 
 
+
 """
     4. Perform inference
 """
