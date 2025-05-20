@@ -225,15 +225,14 @@ fig, axs = plt.subplots(1, 3, figsize=(15, 5), dpi=300)
 for stype in unique_types:
     indices = [i for i, t in enumerate(staff_types_reduced) if t == stype]
     points = minimal_tensor[indices]
-    plt.scatter(points[:, 0], points[:, 1], label=stype, color=type_to_color[stype])
+    axs[0].scatter(points[:, 0], points[:, 1], label=stype, color=type_to_color[stype])
 
 # 4. Labels and legend
-axs[0].xlabel('Levelling rod offset [µm]')
-axs[0].ylabel('Levelling rod scale [ppm]')
-axs[0].title('Offset and scale of rods by staff type')
+axs[0].set_xlabel('Levelling rod offset [µm]')
+axs[0].set_ylabel('Levelling rod scale [ppm]')
+axs[0].set_title('Offset and scale of rods by staff type')
 axs[0].legend(title='Staff Type', bbox_to_anchor=(1.05, 1), loc='upper left')
-axs[0].tight_layout()
-axs[0].show()
+
 
 # Plot 2: 2D KDE (Pretraining)
 for class_name, tensor in prior_predictive_pretrain_dict.items():
@@ -243,13 +242,12 @@ for class_name, tensor in prior_predictive_pretrain_dict.items():
     
     sns.kdeplot(
         x=x, y=y, ax=axs[1],
-        fill=False, bw_adjust=2, label=class_name
+        fill=True, bw_adjust=2, alpha = 0.3, label=class_name
     )
 
 axs[1].set_title("Pretraining KDE by Class")
 axs[1].set_xlabel("Offset [µm]")
 axs[1].set_ylabel("Scale [ppm]")
-# axs[1].legend(title="Rod Type")
 
 # Plot 3: 2D KDE (Posttraining)
 for class_name, tensor in prior_predictive_posttrain_dict.items():
@@ -258,13 +256,13 @@ for class_name, tensor in prior_predictive_posttrain_dict.items():
     y = tensor[:, :, 1].flatten().numpy()
     
     sns.kdeplot(
-        x=x, y=y, ax=axs[1],
-        fill=False, bw_adjust=2, label=class_name
+        x=x, y=y, ax=axs[2],
+        fill=True, bw_adjust=2, alpha = 0.3, label=class_name
     )
 
-axs[1].set_title("Posttraining KDE by Class")
-axs[1].set_xlabel("Offset [µm]")
-axs[1].set_ylabel("Scale [ppm]")
+axs[2].set_title("Posttraining KDE by Class")
+axs[2].set_xlabel("Offset [µm]")
+axs[2].set_ylabel("Scale [ppm]")
 # axs[1].legend(title="Rod Type")
 
 

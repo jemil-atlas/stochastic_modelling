@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 
 # Load the Excel file
-filepath = "dataset_levelling_rod_calibration.ods"
+filepath = "../data_stochastic_modelling/data_levelling_rod_calibration/dataset_levelling_rod_calibration.ods"
 df = pd.read_excel(filepath, sheet_name="Tabelle1", skiprows=4)
 main_df = df
 
@@ -120,26 +120,26 @@ minimal_tensor = data_list_to_tensor(minimal_dlist, ['Overall Offset [µm]', 'Ov
 
 # i) Aggregate names
 
-# gwld, gwcl are super old; thye should not be considered leica/trimble canon
+# gwld, gwcl are super old; thye should not be considered canon
 reduction_dict = {
-    'gpcl2': 'leica2m',
-    'gpcl3': 'leica3m',
-    'gpcl3(ref.)': 'leica3m',
-    'ld13': 'trimble3m',
+    'gpcl2': 'l2m',
+    'gpcl3': 'l3m',
+    'gpcl3(ref.)': 'l3m',
+    'ld13': 't3m',
     'leicagpcl0.5mini': 'misc',
-    'leicagpcl2': 'leica2m',
-    'leicagpcl3': 'leica3m',
+    'leicagpcl2': 'l2m',
+    'leicagpcl3': 'l3m',
     'leicagwcl92': 'misc',
     'leicagwcl182': 'misc',
-    'nedogpcl3': 'leica3m',
-    'trimbleld13': 'trimble3m',
-    'wildgpcl2': 'leica2m',
-    'wildgpcl3': 'leica3m',
+    'nedogpcl3': 'l3m',
+    'trimbleld13': 't3m',
+    'wildgpcl2': 'l2m',
+    'wildgpcl3': 'l3m',
     'zeissgwld182': 'misc',
     'zeissgwld92': 'misc',
-    'zeissld12': 'trimble2m',
-    'zeissld13': 'trimble3m',
-    'geozmidi': 'leica2m',
+    'zeissld12': 't2m',
+    'zeissld13': 't3m',
+    'geozmidi': 'l2m',
     'geozmidi(0.9m)': 'misc',
     'geozmidi(1m)': 'misc',
     'geozmini': 'misc',
