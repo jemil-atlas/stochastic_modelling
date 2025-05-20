@@ -38,7 +38,7 @@ len_z = 0.2 # in m
 n_x = 30
 n_z = 10
 n_pts = n_z*n_x
-n_endpoints = 25
+n_endpoints = 51
 
 # x,z coordinates of gradbox
 x = torch.linspace(0,len_x,n_x)
@@ -250,7 +250,7 @@ def model(observations = None):
     
     n_field = n_Smith_and_Weintraub(t_field, p_field, h_field)
 
-    sigma_meas = 1e-6
+    sigma_meas = 1e-5
     _, refraction_integrals = accumulate_refraction(x_start, x_end, n_field)
     ref_dist = pyro.distributions.Normal(loc = refraction_integrals, scale = sigma_meas)
     
@@ -330,8 +330,12 @@ t_prior_sample = t_prior()
 p_prior_sample = p_prior()
 h_prior_sample = h_prior()
 n_prior_sample = n_Smith_and_Weintraub(t_prior_sample, p_prior_sample, h_prior_sample)
+ref_prior_sample = conditioned_model(t_prior_sample, p_prior_sample, h_prior_sample)
 
-t_pretrain, p_pretrain, h_pretrain = copy.deepcopy(guide())
+t_pretrain, p_pretrain, h_pretrain = guide()
+t_pretrain = [t_pretrain[k].detach().clone() for k in range(3)]
+p_pretrain = [p_pretrain[k].detach().clone() for k in range(3)]
+h_pretrain = [h_pretrain[k].detach().clone() for k in range(3)]
 n_pretrain = n_Smith_and_Weintraub(t_pretrain[0], p_pretrain[0], h_pretrain[0])
 ref_pretrain = conditioned_model(t_pretrain[0], p_pretrain[0], h_pretrain[0])
 
@@ -344,15 +348,15 @@ ref_pretrain = conditioned_model(t_pretrain[0], p_pretrain[0], h_pretrain[0])
 # i) Set up inference
 
 
-adam = pyro.optim.Adam({"lr": 1e-1})
-elbo = pyro.infer.Trace_ELBO(num_particles = 1)
+adam = pyro.optim.Adam({"lr": 1e-2})
+elbo = pyro.infer.Trace_ELBO(num_particles = 1,)
 svi = pyro.infer.SVI(model, guide, adam, elbo)
 
 
 # ii) Perform svi
 
 losses = []
-n_steps = 50
+n_steps = 1000
 data_svi = beta_obs
 for step in range(n_steps):
     loss = svi.step(data_svi)
@@ -360,7 +364,7 @@ for step in range(n_steps):
     if step % 10 == 0:
         print('Step: {}/{} Loss : {} '.format(step, n_steps, loss))
 
-t_posttrain, p_posttrain, h_posttrain = copy.deepcopy(guide())
+t_posttrain, p_posttrain, h_posttrain = copy.copy(guide())
 n_posttrain = n_Smith_and_Weintraub(t_posttrain[0], p_posttrain[0], h_posttrain[0])
 ref_posttrain = conditioned_model(t_posttrain[0], p_posttrain[0], h_posttrain[0])
 

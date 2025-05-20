@@ -42,8 +42,8 @@ torch.manual_seed(0)
 mu_true = 1
 sigma_true = 2
 
-n_data = 21
-subsample_size = 20
+n_data = 1001
+subsample_size = 1000
 data = torch.distributions.Normal(loc = mu_true, scale = sigma_true).sample([n_data])
 
 
@@ -138,7 +138,7 @@ svi = pyro.infer.SVI(model, guide, adam, elbo)
 
 # Handle DataLoader case
 loss_sequence = []
-for epoch in range(1000):
+for epoch in range(3000):
     epoch_loss = 0
     for batch_data, subsample_indices in subbatch_dataloader:
         loss = svi.step(batch_data, subsample_indices)
@@ -158,3 +158,17 @@ print('True mu = {}, True sigma = {} \n Inferred mu = {:.3f}, Inferred sigma = {
               torch.mean(data),
               torch.mean(torch.hstack(mean_list))))
 
+# Interpretation:
+# We notice here a discrepancy between the arithmetic mean of the whole dataset
+# and the inferred mean based on two batches of size (1000,1). This is not due
+# to some error in pyro, which uses the standard scaling. This scaling ensures
+# that an unbiased estimator for the log probs and the gradients are built - but
+# not that their sum adds to the gradient derived from the full dataset. This is
+# by design as multiple noisy updates per epoch often behave better than one 
+# single update to avoid local minima and converge faster in terms of wall-clock 
+# time. Overall this increase of variance in gradient estimators is intentional
+# and rescaling and accumulation of the gradients would diminish the advantages
+# gained by minibatch training (many but noisy updates, small memory footprint).
+# In cases of problems with the subbatched training, try some subbatch-specific
+# troubleshooting instead: drop the last batch, ensure the subbatches are evenly
+# sized or increase the subbatch size.
