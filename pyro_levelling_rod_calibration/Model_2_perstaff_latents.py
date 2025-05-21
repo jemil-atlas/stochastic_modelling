@@ -220,8 +220,8 @@ def build_dicts_from_data(data):
 
 # i) Set up inference
 
-adam = pyro.optim.Adam({"lr": 0.03})
-elbo = pyro.infer.Trace_ELBO(num_particles = 10,
+adam = pyro.optim.Adam({"lr": 0.1})
+elbo = pyro.infer.Trace_ELBO(num_particles = 5,
                                  max_plate_nesting = 2)
 svi = pyro.infer.SVI(model, guide, adam, elbo)
 
@@ -230,7 +230,7 @@ svi = pyro.infer.SVI(model, guide, adam, elbo)
 
 data = (minimal_tensor,)
 loss_sequence = []
-for step in range(3000):
+for step in range(10000):
     loss = svi.step(*data)
     loss_sequence.append(loss)
     if step %100 == 0:
@@ -507,16 +507,7 @@ plt.show()
 
 # vii) Plot posterior samples of parameters
 
-# Plot raw observations, distinguished by corresponding staff class
 plt.figure(dpi=300)
-
-for stype in unique_types:
-    idx = [i for i, t in enumerate(staff_types_reduced) if t == stype]
-    pts = minimal_tensor[idx]
-    plt.scatter(pts[:, 0], pts[:, 1],
-                s=12, alpha=.5,
-                label=f"obs {stype}", color=type_to_color[stype])
-
 # Plot samples from the alpha posterior
 alpha_samples = posterior_posttrain_dict["alpha"]      # [n_samp, n_ids, 2]
 
@@ -528,18 +519,26 @@ alpha_thin = alpha_samples[idx_show]                   # [NSHOW, n_ids, 2]
 alpha_thin = alpha_thin.reshape(-1, 2).numpy()         # [NSHOW*n_ids, 2]
 
 # we need matching colours: repeat each id’s colour NSHOW times
-# colours = []
-# for sid in range(n_ids):
-#     cls   = id_class_indices[sid].item()
-#     c     = type_to_color[index_to_type[cls]]
-#     colours.extend([c]*NSHOW)
+colours = []
+for sid in range(n_ids):
+    cls   = id_class_indices[sid].item()
+    c     = type_to_color[index_to_type[cls]]
+    colours.extend([c]*NSHOW)
 
 plt.scatter(alpha_thin[:,0], alpha_thin[:,1],
-            s=14, alpha=.15, marker='o',
+            s=20, alpha=.1, marker='o',
             edgecolors='none',
-            # c=colours,
+            # c=colours,        # Something not right with color classes
             label='posterior α samples')
 
+# Plot raw observations, distinguished by corresponding staff class
+for stype in unique_types:
+    idx = [i for i, t in enumerate(staff_types_reduced) if t == stype]
+    pts = minimal_tensor[idx]
+    plt.scatter(pts[:, 0], pts[:, 1],
+                s=20, alpha=1,
+                label=f"obs {stype}", color=type_to_color[stype])
+    
 # Plotting adjustments
 plt.xlabel('Levelling-rod offset [µm]')
 plt.ylabel('Levelling-rod scale [ppm]')
@@ -554,3 +553,16 @@ plt.ylim(ymin, ymax)
 
 plt.tight_layout()
 plt.show()
+
+
+Sigma_cal_pyro = pyro.get_param_store()['Sigma_cal']
+print('Estimated calibration uncertainty : ', Sigma_cal_pyro)
+print('Sigma offset calibration: ', torch.sqrt(Sigma_cal_pyro[0,0]) )
+print('Sigma scale calibration: ', torch.sqrt(Sigma_cal_pyro[1,1]) )
+
+
+# viii) Plot calibration covariance
+
+plt.figure(dpi = 300)
+plt.imshow(Sigma_cal_pyro.detach().numpy())
+plt.title('Error covariance matrix calibration')
