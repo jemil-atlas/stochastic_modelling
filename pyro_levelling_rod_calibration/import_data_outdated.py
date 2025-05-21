@@ -41,7 +41,7 @@ class DataList():
     
 data_list = DataList(data_list_unformatted)
             
-minimal_list = data_list.extract_subdicts(['Staff Type', 'Overall Offset [µm]', 'Overall Scale [ppm]'])
+minimal_list = data_list.extract_subdicts(['Staff Type', 'Staff Serial Number', 'Overall Offset [µm]', 'Overall Scale [ppm]'])
 
 
    
@@ -91,9 +91,11 @@ def clean_data_list_advanced(data_list):
             continue
 
         staff_type = entry.get("Staff Type")
+        staff_id = str(entry.get("Staff Serial Number"))
 
         if isinstance(staff_type, str):
             norm_staff_type = staff_type.replace(" ", "").lower()
+            norm_staff_id = staff_id.replace(" ", "").lower()
 
             # Skip if staff_type is 'mittelwert'
             if norm_staff_type == "mittelwert":
@@ -101,6 +103,7 @@ def clean_data_list_advanced(data_list):
 
             # Update the normalized version
             entry["staff_type"] = norm_staff_type
+            entry["staff_id"] = norm_staff_id
 
         cleaned_list.append(entry)
 
@@ -121,7 +124,7 @@ minimal_tensor = data_list_to_tensor(minimal_dlist, ['Overall Offset [µm]', 'Ov
 # i) Aggregate names
 
 # gwld, gwcl are super old; thye should not be considered canon
-reduction_dict = {
+reduction_dict_classes = {
     'gpcl2': 'l2m',
     'gpcl3': 'l3m',
     'gpcl3(ref.)': 'l3m',
@@ -147,32 +150,42 @@ reduction_dict = {
 }
 
 
+# Build reduction dict for staff rod id's
+
+
 
 
 # 1. Extract staff types
 staff_types = [entry["Staff Type"] for entry in minimal_list]
-staff_types_reduced = [reduction_dict.get(name, 'misc') for name in staff_types]
-
-# 2. Get unique staff types and assign a color per type
+staff_types_reduced = [reduction_dict_classes.get(name, 'misc') for name in staff_types]
 unique_types = sorted(set(staff_types_reduced))
-type_to_color = {stype: plt.cm.tab10(i % 10) for i, stype in enumerate(unique_types)}
+# type_to_color = {stype: plt.cm.tab10(i % 10) for i, stype in enumerate(unique_types)}
+
+# 2. Extract serial numbers
+serial_numbers = [entry['Staff Serial Number'] for entry in data_list.list]
+# Get unique serials, assign numeric ID starting from 1
+unique_serials = sorted(set([str(serial_number) for serial_number in serial_numbers]))
+serial_to_id = {s: i + 1 for i, s in enumerate(unique_serials)}
+
+# Step 3: Add 'staff_id' field to each entry
+for entry in data_list.list:
+    serial = entry['Staff Serial Number']
+    entry['staff_id'] = serial_to_id[str(serial)]
 
 def add_info_data_list(data_list):
     for entry in data_list:
-        entry["staff_type_reduced"] = reduction_dict.get(entry["staff_type"], 'misc')
+        entry["staff_type_reduced"] = reduction_dict_classes.get(entry["staff_type"], 'misc')
     return data_list
 
 minimal_list = add_info_data_list(minimal_dlist)
 
         
 #Export data
-with open("data_list.pkl", "wb") as f:
+with open("../data_stochastic_modelling/data_levelling_rod_calibration/data_list.pkl", "wb") as f:
     pickle.dump(dlist, f)
 
-with open("minimal_list.pkl", "wb") as f:
+with open("../data_stochastic_modelling/data_levelling_rod_calibration/minimal_list.pkl", "wb") as f:
     pickle.dump(minimal_list, f)
     
-# with open("minimal_tensor.pkl", "wb") as f:
-#     pickle.dump(minimal_tensor, f)
-torch.save(minimal_tensor, "minimal_tensor.pt")
+torch.save(minimal_tensor, "../data_stochastic_modelling/data_levelling_rod_calibration/minimal_tensor.pt")
     

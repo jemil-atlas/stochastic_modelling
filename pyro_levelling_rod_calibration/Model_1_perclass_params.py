@@ -38,11 +38,11 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 # import data
-with open("data_list.pkl", "rb") as f:
+with open("../data_stochastic_modelling/data_levelling_rod_calibration/data_list.pkl", "rb") as f:
     data_list = pickle.load(f)
-with open("minimal_list.pkl", "rb") as f:
+with open("../data_stochastic_modelling/data_levelling_rod_calibration/minimal_list.pkl", "rb") as f:
     minimal_list = pickle.load(f)
-minimal_tensor = torch.load("minimal_tensor.pt", weights_only=True)
+minimal_tensor = torch.load("../data_stochastic_modelling/data_levelling_rod_calibration/minimal_tensor.pt", weights_only=True)
 
 
 # ii) Definitions
@@ -56,7 +56,6 @@ n_obs = len(minimal_list)
 """
 
 # 1. Extract staff types
-staff_types = [entry["staff_type"] for entry in minimal_list]
 staff_types_reduced = [entry["staff_type_reduced"] for entry in minimal_list]
 
 
