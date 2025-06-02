@@ -93,10 +93,6 @@ class LevellingRodType():
         repr_str = 'Levelling rod type' + self.name
         return repr_str
         
-# n_staff_class = torch.randint(low = n_staff_class_range[0], high = n_staff_class_range[1], size = (1,))
-# staff_class_names = [f"Type {letter}" for letter in string.ascii_uppercase[:n_staff_class]]
-# staff_classes_list = [LevellingRodType(name) for name in staff_class_names]
-
 
 class LevellingRod():
     def __init__(self, rod_name, rod_type, n_meas):
@@ -104,6 +100,7 @@ class LevellingRod():
         self.type = rod_type
         self.n_edge = rod_type.n_edge.item()
         self.n_meas = n_meas.item()
+        self.tilt_types = torch.randint(0,3, [self.n_meas])
         self.len_staff = self.type.len_staff
         self.alpha_staff = pyro.sample('alpha_rod_' + self.name, self.type.alpha_dist)
         
@@ -112,14 +109,7 @@ class LevellingRod():
         repr_str = 'Levelling rod ' + self.name + ' of type ' + self.type.name
         return repr_str
 
-# n_staff = torch.randint(low = n_staffs_range[0], high = n_staffs_range[1], size = (1,))
-# staff_names = ['{}'.format(k) for k in range(n_staff)]
-# random_class_index = torch.randint(low = 0, high = n_staff_class, size = (n_staff,))
-# random_staff_class_list = [staff_classes_list[random_class_index[k]] for k in range(n_staff)]
-# staff_list = [LevellingRod(rod_name = staff_names[k], rod_type = random_staff_class_list[k])
-#                            for k in range(n_staff)]
-        
-        
+
 # ii) Class for environmental effects
 
 
@@ -189,8 +179,31 @@ def measure_alpha(staff_list, n_meas_list):
     # Sample from distribution
     pass
 
+# iii) Impact of tilting
 
-# iii) Or generate edge series
+def add_tilt_effect(tilt_type_list, n_meas, n_meas_max, n_edge_rod_k, n_edge_max):
+    # assume 3 different tilt types:
+    #   0. no impact
+    #   1. positive curvature
+    #   2. negative curvature
+    
+    x = (1/n_edge_rod_k)*torch.arange(0, n_edge_rod_k)
+    
+    tilt_series = torch.zeros(n_meas_max, n_edge_max)
+    # tilt_series[n_meas : n_meas_max] = torch.nan
+    for k, tilt_type in enumerate(tilt_type_list):
+        if tilt_type == 0:
+            pass
+        elif tilt_type == 1:
+            tilt_series[k, 0:n_edge_rod_k] = 50* x**2
+        elif tilt_type == 2:
+            tilt_series[k, 0:n_edge_rod_k] = -50* x**2
+    
+    return tilt_series
+    
+
+
+# iv) Generate edge series
 
 def generate_edgeseries(staff_list, observations = None):
     # Info compilation
@@ -226,19 +239,20 @@ def generate_edgeseries(staff_list, observations = None):
         # Following is x values of staff extended till max amount of edges for
         # vectorizability but true till n_edge_rod_k
         x_staff_rod_k = staff.len_staff * (1/n_edge_rod_k)*torch.arange(0, n_edge_max)
-                
+        tilt_types = staff.tilt_types
+        
         with meas_plate:
             # different measurement, different tilt -> different 0
-            tilt_effect = add_tilt_effect()
+            tilt_effect = add_tilt_effect(tilt_types, n_meas_rod_k, n_meas_max, n_edge_rod_k, n_edge_max)
             
             with edge_plate:
                 # different edge, different impact of alpha
                 mu_edge =  alpha[0] + alpha[1]*x_staff_rod_k
-                sigma_edge =  100*torch.eye(1)
+                sigma_edge =  10*torch.eye(1)
                 
                 # Extendo to proper shape [n_meas_max, n_edge_max] pre-masking
                 extension_tensor = torch.ones([n_meas_max, 1])
-                mu_extended = extension_tensor * mu_edge.unsqueeze(0)
+                mu_extended = extension_tensor * mu_edge.unsqueeze(0) + tilt_effect
                 
                 # mask construction: mask_tensor of shape [n_meas_max, n_edge_max]
                 #    dim edge_plate True till n_edge_rod_k
@@ -258,54 +272,13 @@ def generate_edgeseries(staff_list, observations = None):
     return obs_dict
     
     
-    #######
-    
-    # # Unvectorized version
-    
-    # # Sample from distribution
-    # # rod plate : inside are effects different for each rod
-    # # meas_plate_rod :inside are effects differet for each measurement of a rod
-    # # edge_plate_rod_edge :inside are effects differet for each edge of a measurement of a rod
-    
-    # obs_dict = {}
-    # for rod_k in pyro.plate('rod_plate', size = n_staff):
-    #     # different_rods, different alpha
-    #     staff = staff_list[rod_k]
-    #     alpha = staff.alpha_staff
-    #     n_edge_rod_k = staff.n_edge
-    #     x_staff_rod_k = staff.len_staff * torch.arange(0, 1, n_edge_rod_k)
-        
-    #     meas_dict_temp = {}
-    #     for meas_l in  pyro.plate('meas_plate_{}'.format(rod_k), size = n_meas_list[rod_k]):
-    #         # different measurement, different tilt -> different 0
-    #         tilt_effect = add_tilt_effect()
-            
-    #         edge_dict_temp = {}
-    #         for edge_j in  pyro.plate('edge_plate_{}_{}'.format(rod_k, meas_l), size = n_edge_list[rod_k]):
-    #             # different edge, different impact of alpha
-    #             mu_edge =  alpha[0] + alpha[1]*x_staff_rod_k
-    #             sigma_edge =  100*torch.eye(1)
-    #             edge_dist = pyro.distributions.Normal(loc = mu_edge,
-    #                                                   scale = sigma_edge)
-    #             obs_name = 'edge_obs_r{}_m{}_e{}'.format(rod_k, meas_l, edge_j)
-    #             edge_dict_temp[obs_name] = pyro.sample(obs_name, edge_dist, obs = observations)
-            
-    #         meas_name = 'meas_r{}_m{}'.format(rod_k, meas_l)
-    #         meas_dict_temp[meas_name] = edge_dict_temp
-            
-    #     rod_name = 'rod_{}'.format(rod_k)
-    #     obs_dict[rod_name] = meas_dict_temp
-    
-    # return obs_dict
-
 
 """
     4. Specific effects
 """
 
 
-def add_tilt_effect():
-    pass
+
 
 
 """
@@ -381,12 +354,12 @@ axes[0].set_title("Edge measurements of some rod")
 axes[0].set_ylabel("value")
 axes[0].set_xlabel("edge nr")
 
-axes[1].plot(data['4'].T, lw=1.5)
+axes[1].plot(data['1'].T, lw=1.5)
 axes[1].set_title("Edge measurements of some rod")
 axes[1].set_ylabel("value")
 axes[1].set_xlabel("edge nr")
 
-axes[2].plot(data['20'].T, lw=1.5)
+axes[2].plot(data['2'].T, lw=1.5)
 axes[2].set_title("Edge measurements of some rod")
 axes[2].set_ylabel("value")
 axes[2].set_xlabel("edge nr")
@@ -474,10 +447,12 @@ for staff in staff_list:
     for meas in range(staff.n_meas):
         # Compile info
 
-        staff_type_reduced = staff.type
+        staff_type_reduced = staff.type.name
+        staff_len = staff.len_staff
         overall_offset = staff.alpha_staff[0]
         overall_scale = staff.alpha_staff[1]
         edgeseries = data[str(staff_id)][meas,:]
+        tilt_type = staff.tilt_types[meas]
         
         job_nr += 1
         job_nr_list.append(str(job_nr))
@@ -486,9 +461,11 @@ for staff in staff_list:
         datapoint_dict_temp = {'job_nr' : job_nr,
                                'staff_id' : staff_id,
                                'staff_type_reduced' : staff_type_reduced,
+                               'staff_len' : staff_len,
                                'gt_offset' : overall_offset,
                                'gt_scale' : overall_scale,
-                               'edgeseries' : edgeseries }
+                               'edgeseries' : edgeseries,
+                               'tilt_type' : tilt_type}
         data_list.append(datapoint_dict_temp)
     staff_id += 1
     staff_id_list.append(staff_id)
