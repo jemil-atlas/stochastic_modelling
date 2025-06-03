@@ -454,9 +454,6 @@ for staff in staff_list:
         edgeseries = data[str(staff_id)][meas,:]
         tilt_type = staff.tilt_types[meas]
         
-        job_nr += 1
-        job_nr_list.append(str(job_nr))
-        
         # Save in data_list
         datapoint_dict_temp = {'job_nr' : job_nr,
                                'staff_id' : staff_id,
@@ -467,6 +464,9 @@ for staff in staff_list:
                                'edgeseries' : edgeseries,
                                'tilt_type' : tilt_type}
         data_list.append(datapoint_dict_temp)
+        job_nr += 1
+        job_nr_list.append(str(job_nr))
+        
     staff_id += 1
     staff_id_list.append(staff_id)
 
